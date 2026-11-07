@@ -294,12 +294,22 @@ pub fn draw_dot_square(center: Vec2, size: f32, color: Color) {
     draw_rectangle(x, y, side, side, color);
 }
 
+/// フックの柄の端（ワイヤーをつなぐ所）のドットの中心。`point` は刺さった点、`normal` は面の外向き。
+/// フックはこのドットを基準に格子に揃えて描くので、ワイヤーの線とドットがずれずにつながる。
+pub fn hook_tail(point: Vec2, normal: Vec2) -> Vec2 {
+    let rows = HOOK.len() as f32;
+    let tail = point + normal * ((rows - 0.5) * SPRITE_DOT);
+    ((tail / SPRITE_DOT).floor() + 0.5) * SPRITE_DOT
+}
+
 /// フックを、爪の先が `point` に来るように描く。`normal` は刺さった面から外へ向く向き（上下左右のどれか）。
 pub fn draw_hook(texture: &Texture2D, point: Vec2, normal: Vec2) {
     let size = vec2(texture.width(), texture.height()) * SPRITE_DOT;
     // 絵は爪が上（面の外向きが下）。外向きが下なら回さず、そこから向きに合わせて回す。
     let rotation = normal.y.atan2(normal.x) - std::f32::consts::FRAC_PI_2;
-    let center = point + normal * (size.y / 2.0);
+    // 柄の端のドットから、絵の中心（縦 7 ドットの真ん中）まで面の側へ戻る。
+    let center =
+        hook_tail(point, normal) - normal * ((size.y / SPRITE_DOT - 1.0) / 2.0 * SPRITE_DOT);
     draw_texture_ex(
         texture,
         center.x - size.x / 2.0,

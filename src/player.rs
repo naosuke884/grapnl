@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::sprites::{draw_dot_line, draw_hook, draw_sprite, Sprites};
+use crate::sprites::{draw_dot_line, draw_hook, draw_sprite, hook_tail, Sprites};
 
 use crate::level::Level;
 
@@ -305,12 +305,15 @@ impl Player {
     pub fn draw(&self, sprites: &Sprites, hook_normal: Vec2) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
+            // ワイヤーは刺さった点ではなく、フックの柄の端からつなぐ。フックはワイヤーの上に描く。
+            let tail = hook_tail(anchor.point, hook_normal);
             if self.rope.len() == ROPE_POINTS {
                 for (i, pair) in self.rope.windows(2).enumerate() {
-                    draw_dot_line(pair[0], pair[1], wire_color, i == 0);
+                    let start = if i == 0 { tail } else { pair[0] };
+                    draw_dot_line(start, pair[1], wire_color, i == 0);
                 }
             } else {
-                draw_dot_line(self.position, anchor.point, wire_color, true);
+                draw_dot_line(tail, self.position, wire_color, true);
             }
             draw_hook(&sprites.hook, anchor.point, hook_normal);
         }

@@ -1,6 +1,7 @@
 # 依存の更新 PR を Dependabot に作らせる。minor / patch は 1 本の PR にまとめ、major は個別に確認する
 # (Cargo は dev / prod の依存を分けて束ねられないので、束は 1 つにする)
 # cooldown はリリースから 7 日経った版だけを提案させ、出たばかりの不具合版や乗っ取られたパッケージを避ける (セキュリティアップデートにはかからない)
+# roommate-sdk は roommate リポジトリのタグを git で参照していて、Dependabot が新しいタグを解決できず更新が失敗するため ignore し、手で上げる
 # commit-message の prefix は、初期設定の `Bump x from …` では Conventional Commits の形にならないため
 version: 2
 updates:
@@ -10,6 +11,8 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: roommate-sdk
     groups:
       dependencies:
         update-types: [minor, patch]

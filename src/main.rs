@@ -169,6 +169,12 @@ async fn main() {
                 Color::from_rgba(255, 200, 80, 255),
             );
         }
+        // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
+        if !game.over {
+            if let Some(meters) = game.offscreen_hazard_distance() {
+                draw_offscreen_hazard(&text, meters);
+            }
+        }
         if game.over {
             draw_game_over(&text, &game, since_over, high_score);
         }
@@ -188,6 +194,21 @@ fn view_camera(camera_x: f32) -> Camera2D {
         zoom: vec2(2.0 / size.x, 2.0 / size.y),
         ..Default::default()
     }
+}
+
+/// 画面の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
+fn draw_offscreen_hazard(text: &Text, meters: f32) {
+    // 領域の境目の線と同じ赤。
+    let color = Color::from_rgba(240, 90, 110, 255);
+    let y = screen_height() * 0.5;
+    draw_rectangle(0.0, y - 26.0, 4.0, 52.0, color);
+    draw_triangle(
+        vec2(10.0, y),
+        vec2(26.0, y - 12.0),
+        vec2(26.0, y + 12.0),
+        color,
+    );
+    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
 }
 
 fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {

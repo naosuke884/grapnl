@@ -160,7 +160,7 @@ async fn main() {
             }
             wire_pressed = false;
             boost_pressed = false;
-        } else if !pause.paused() {
+        } else if playing(menu, game.over, pause.paused()) {
             // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
             accumulator += hit_stop.consume(frame_time);
             while accumulator >= FIXED_DT && !game.over && !hit_stop.active() {
@@ -195,7 +195,7 @@ async fn main() {
         }
         shadows.forget_stale(now);
         // 終わった後、タイトルなどの画面、一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over && menu.is_none() && !pause.paused() {
+        if playing(menu, game.over, pause.paused()) {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -215,66 +215,9 @@ async fn main() {
         game.draw(&text);
 
         set_default_camera();
-        text.draw(
-            &format!(
-                "スコア {}   {:.0} m   撃破 {}",
-                game.score(),
-                game.distance(),
-                game.kills
-            ),
-            16.0,
-            32.0,
-            28.0,
-            Color::from_rgba(180, 190, 205, 255),
-        );
-        text.draw(
-            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
-            16.0,
-            screen_height() - 16.0,
-            22.0,
-            Color::from_rgba(150, 160, 175, 200),
-        );
-        text.draw(
-            &best,
-            16.0,
-            60.0,
-            22.0,
-            Color::from_rgba(150, 160, 175, 255),
-        );
-        // ブーストの待ち時間。使えるときは明るく、待っている間は残り時間を出す。
-        let cooldown = game.player.boost_cooldown;
-        let (label, color) = if cooldown > 0.0 {
-            (
-                format!("ブースト {cooldown:.1}"),
-                Color::from_rgba(140, 150, 165, 255),
-            )
-        } else {
-            (
-                "ブースト OK".to_owned(),
-                Color::from_rgba(140, 220, 160, 255),
-            )
-        };
-        text.draw(&label, 16.0, 116.0, 22.0, color);
-        if game.chain > 0 {
-            let multiplier = game.next_multiplier();
-            let max = if multiplier == game::MAX_MULTIPLIER {
-                " 最大"
-            } else {
-                ""
-            };
-            text.draw(
-                &format!("連鎖 x{multiplier}{max}"),
-                16.0,
-                88.0,
-                28.0,
-                Color::from_rgba(255, 200, 80, 255),
-            );
-        }
-        // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
-        if !game.over {
-            if let Some(meters) = game.offscreen_hazard_distance() {
-                draw_offscreen_hazard(&text, meters);
-            }
+        // タイトルなどの画面の間は、そちらにロゴや操作の説明を出すので、遊んでいる間の表示は隠す。
+        if menu.is_none() {
+            draw_hud(&text, &game, &best);
         }
         if pause.paused() {
             draw_paused(&text);
@@ -288,11 +231,76 @@ async fn main() {
             }
         }
         if let Some(current) = menu {
+            // タイトルを出している間に日付が変わったら、始めたときに遊ぶ新しい日のコースを出す。
+            let course = daily::title_line(game::today_seed(macroquad::miniquad::date::now()));
+            let title = menu::TitleInfo {
+                course: &course,
+                best: &best,
+            };
             let buttons = menu::buttons(current, delete_status, screen, &measure);
-            menu::draw(&text, current, delete_status, &buttons, mouse);
+            menu::draw(&text, current, delete_status, &title, &buttons, mouse);
         }
 
         next_frame().await
+    }
+}
+
+/// 遊んでいる間の表示。左上のスコアと自己ベストとブースト、下の操作の説明、画面の外の領域までの距離。
+fn draw_hud(text: &Text, game: &Game, best: &str) {
+    text.draw(
+        &format!(
+            "スコア {}   {:.0} m   撃破 {}",
+            game.score(),
+            game.distance(),
+            game.kills
+        ),
+        16.0,
+        32.0,
+        28.0,
+        Color::from_rgba(180, 190, 205, 255),
+    );
+    text.draw(
+        "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
+        16.0,
+        screen_height() - 16.0,
+        22.0,
+        Color::from_rgba(150, 160, 175, 200),
+    );
+    text.draw(best, 16.0, 60.0, 22.0, Color::from_rgba(150, 160, 175, 255));
+    // ブーストの待ち時間。使えるときは明るく、待っている間は残り時間を出す。
+    let cooldown = game.player.boost_cooldown;
+    let (label, color) = if cooldown > 0.0 {
+        (
+            format!("ブースト {cooldown:.1}"),
+            Color::from_rgba(140, 150, 165, 255),
+        )
+    } else {
+        (
+            "ブースト OK".to_owned(),
+            Color::from_rgba(140, 220, 160, 255),
+        )
+    };
+    text.draw(&label, 16.0, 116.0, 22.0, color);
+    if game.chain > 0 {
+        let multiplier = game.next_multiplier();
+        let max = if multiplier == game::MAX_MULTIPLIER {
+            " 最大"
+        } else {
+            ""
+        };
+        text.draw(
+            &format!("連鎖 x{multiplier}{max}"),
+            16.0,
+            88.0,
+            28.0,
+            Color::from_rgba(255, 200, 80, 255),
+        );
+    }
+    // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
+    if !game.over {
+        if let Some(meters) = game.offscreen_hazard_distance() {
+            draw_offscreen_hazard(text, meters);
+        }
     }
 }
 
@@ -307,6 +315,12 @@ fn view_camera(camera_x: f32) -> Camera2D {
         zoom: vec2(2.0 / size.x, 2.0 / size.y),
         ..Default::default()
     }
+}
+
+/// ゲームを進めるか。タイトルなどの画面、ゲームオーバー、一時停止の間は `Game::step` を回さず、
+/// 迫ってくる領域も `elapsed` も止める。影の部屋へも送らない。
+fn playing(menu: Option<Menu>, over: bool, paused: bool) -> bool {
+    menu.is_none() && !over && !paused
 }
 
 /// 左クリック、R、スペースのどれかでやり直す。
@@ -425,6 +439,16 @@ fn draw_game_over(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_stands_still_on_the_title_and_other_menus() {
+        for menu in [Menu::Title, Menu::ConfirmDelete, Menu::DeleteResult] {
+            assert!(!playing(Some(menu), false, false));
+        }
+        assert!(playing(None, false, false));
+        assert!(!playing(None, true, false));
+        assert!(!playing(None, false, true));
+    }
 
     #[test]
     fn retry_ignores_input_during_the_delay() {

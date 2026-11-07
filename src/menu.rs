@@ -11,7 +11,7 @@ use crate::text::Text;
 /// 遊んでいない間に出している画面。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Menu {
-    /// 開いたときの画面。クリックで始める。
+    /// 開いたときの画面。後ろに吊られた自機を見せたまま、クリックで始める。
     Title,
     /// 「データを消す」を押した後の確認。
     ConfirmDelete,
@@ -183,6 +183,86 @@ pub fn draw_corner_button(text: &Text, button: &Button, mouse: Vec2) {
     button.draw(text, button.contains(mouse), CORNER);
 }
 
+/// タイトルに出す操作の説明。キーと、それで起きること。
+pub const CONTROLS: [(&str, &str); 3] = [
+    ("左クリック", "ワイヤーを撃つ・戻す"),
+    ("右クリック", "ブースト"),
+    ("Esc", "一時停止"),
+];
+/// 操作の説明の文字の大きさ。
+const CONTROL_SIZE: f32 = 22.0;
+/// 操作の説明で、キーとその説明の間をあける幅。
+const CONTROL_GAP: f32 = 24.0;
+/// 操作の説明の行の間隔。
+const CONTROL_LINE: f32 = 34.0;
+
+/// 操作の説明の 1 行。キーは右に揃え、説明は左に揃えて、2 列に並べる。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ControlRow {
+    pub key: &'static str,
+    pub action: &'static str,
+    /// キーの文字の左端。
+    pub key_x: f32,
+    /// 説明の文字の左端。
+    pub action_x: f32,
+    pub baseline: f32,
+}
+
+/// タイトルの画面の配置。高さはどれも文字のベースラインで、操作の説明のほかは横の中央に揃える。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TitleLayout {
+    pub logo: f32,
+    pub course: f32,
+    pub best: f32,
+    pub controls: Vec<ControlRow>,
+    pub start: f32,
+    pub notice: f32,
+}
+
+/// タイトルの画面の配置。上から、ロゴ、今日のコース、自己ベスト、操作の説明、「クリックでスタート」と並べる。
+/// 操作の説明は、2 列を合わせた幅で中央に置く。上のほうに吊られている自機と重ならないよう、全体を中央より少し下げる。
+pub fn title_layout(screen: Vec2, measure: &dyn Fn(&str, f32) -> f32) -> TitleLayout {
+    let center = screen / 2.0;
+    let widest = |column: fn(&(&'static str, &'static str)) -> &'static str| {
+        CONTROLS
+            .iter()
+            .map(|row| measure(column(row), CONTROL_SIZE))
+            .fold(0.0, f32::max)
+    };
+    let key_width = widest(|row| row.0);
+    let width = key_width + CONTROL_GAP + widest(|row| row.1);
+    let left = center.x - width / 2.0;
+    let top = center.y + 30.0;
+    let controls = CONTROLS
+        .iter()
+        .enumerate()
+        .map(|(i, &(key, action))| ControlRow {
+            key,
+            action,
+            key_x: left + key_width - measure(key, CONTROL_SIZE),
+            action_x: left + key_width + CONTROL_GAP,
+            baseline: top + i as f32 * CONTROL_LINE,
+        })
+        .collect();
+    TitleLayout {
+        logo: center.y - 110.0,
+        course: center.y - 64.0,
+        best: center.y - 32.0,
+        controls,
+        start: center.y + 164.0,
+        notice: center.y + 208.0,
+    }
+}
+
+/// タイトルの画面に出す、今日のコースと自己ベストの文字。
+pub struct TitleInfo<'a> {
+    pub course: &'a str,
+    pub best: &'a str,
+}
+
+/// 今日のコースの色。ゲームオーバーの画面のコースの行と同じ。
+const COURSE: Color = Color::new(0.59, 0.78, 0.92, 1.0);
+
 /// 文の色。
 const BODY: Color = Color::new(0.75, 0.78, 0.83, 1.0);
 /// 「消す」など、取り消せない操作の色。
@@ -193,7 +273,14 @@ pub const NOTICE: Color = Color::new(1.0, 0.8, 0.35, 1.0);
 /// データを消した後に出しておく注意。結果の画面を閉じた後も、タイトルとゲームオーバーに出す。
 pub const NOT_RECORDED: &str = "データを消したので、ページを開き直すまでスコアは記録されません";
 
-pub fn draw(text: &Text, menu: Menu, status: DeleteStatus, buttons: &[Button], mouse: Vec2) {
+pub fn draw(
+    text: &Text,
+    menu: Menu,
+    status: DeleteStatus,
+    title: &TitleInfo,
+    buttons: &[Button],
+    mouse: Vec2,
+) {
     draw_rectangle(
         0.0,
         0.0,
@@ -209,10 +296,17 @@ pub fn draw(text: &Text, menu: Menu, status: DeleteStatus, buttons: &[Button], m
     };
     match menu {
         Menu::Title => {
-            text.draw_centered("grapnl", center.x, center.y - 20.0, 56.0, WHITE);
-            text.draw_centered("クリックで始める", center.x, center.y + 30.0, 24.0, BODY);
+            let layout = title_layout(center * 2.0, &|label, size| text.width(label, size));
+            text.draw_centered("grapnl", center.x, layout.logo, 56.0, WHITE);
+            text.draw_centered(title.course, center.x, layout.course, 22.0, COURSE);
+            text.draw_centered(title.best, center.x, layout.best, 22.0, BODY);
+            for row in &layout.controls {
+                text.draw(row.key, row.key_x, row.baseline, CONTROL_SIZE, WHITE);
+                text.draw(row.action, row.action_x, row.baseline, CONTROL_SIZE, BODY);
+            }
+            text.draw_centered("クリックでスタート", center.x, layout.start, 28.0, WHITE);
             if status == DeleteStatus::Done {
-                text.draw_centered(NOT_RECORDED, center.x, center.y + 76.0, 22.0, NOTICE);
+                text.draw_centered(NOT_RECORDED, center.x, layout.notice, 22.0, NOTICE);
             }
         }
         Menu::ConfirmDelete => {
@@ -356,6 +450,50 @@ mod tests {
             done.iter().map(|b| b.action).collect::<Vec<_>>(),
             vec![Action::BackToTitle]
         );
+    }
+
+    #[test]
+    fn title_controls_line_up_in_two_columns_at_the_center() {
+        for screen in [SCREEN, vec2(1024.0, 768.0)] {
+            let layout = title_layout(screen, &measure);
+            assert_eq!(layout.controls.len(), 3);
+            let key_right = |row: &ControlRow| row.key_x + measure(row.key, CONTROL_SIZE);
+            let first = layout.controls[0];
+            for row in &layout.controls {
+                // キーは右端を、説明は左端を揃える。キーと説明は重ならない。
+                assert_eq!(key_right(row), key_right(&first));
+                assert_eq!(row.action_x, first.action_x);
+                assert!(key_right(row) + CONTROL_GAP <= row.action_x);
+            }
+            let left = layout
+                .controls
+                .iter()
+                .map(|r| r.key_x)
+                .fold(f32::MAX, f32::min);
+            let right = layout
+                .controls
+                .iter()
+                .map(|r| r.action_x + measure(r.action, CONTROL_SIZE))
+                .fold(0.0, f32::max);
+            assert!(left > 0.0 && right < screen.x);
+            assert!(((left + right) / 2.0 - screen.x / 2.0).abs() < 0.01);
+        }
+    }
+
+    #[test]
+    fn title_lines_go_top_to_bottom_and_stay_clear_of_the_delete_button() {
+        for screen in [SCREEN, vec2(1024.0, 768.0)] {
+            let layout = title_layout(screen, &measure);
+            let mut order = vec![layout.logo, layout.course, layout.best];
+            order.extend(layout.controls.iter().map(|row| row.baseline));
+            order.extend([layout.start, layout.notice]);
+            assert!(order.windows(2).all(|pair| pair[0] < pair[1]));
+            // ロゴの上端が画面に収まる。
+            assert!(layout.logo - 56.0 > 0.0);
+            let list = buttons(Menu::Title, DeleteStatus::NotRequested, screen, &measure);
+            let delete = find(&list, Action::OpenConfirm);
+            assert!(layout.notice < delete.rect.y);
+        }
     }
 
     #[test]

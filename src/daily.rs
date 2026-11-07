@@ -34,6 +34,12 @@ pub fn format_countdown(seconds: u64) -> String {
     format!("{h}:{m:02}:{s:02}")
 }
 
+/// タイトルの画面に出す、今日のコースの日付。
+pub fn title_line(seed: u64) -> String {
+    let (month, day) = course_date(seed);
+    format!("今日のコース {month}/{day}")
+}
+
 /// ゲームオーバーの画面に出す、遊んだコースの日付と次のコースまでの時間。
 pub fn course_line(seed: u64, unix_seconds: f64) -> String {
     let (month, day) = course_date(seed);
@@ -92,6 +98,11 @@ mod tests {
         assert_eq!(format_countdown(35_999), "9:59:59");
         assert_eq!(format_countdown(86_399), "23:59:59");
         assert_eq!(format_countdown(86_400), "24:00:00");
+    }
+
+    #[test]
+    fn title_line_shows_the_date() {
+        assert_eq!(title_line(today_seed(NOV_7_2026)), "今日のコース 11/7");
     }
 
     #[test]

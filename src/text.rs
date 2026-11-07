@@ -73,6 +73,11 @@ impl Text {
         self.chars.binary_search(&c).is_ok()
     }
 
+    /// その文字列をすべて描けるか。
+    pub fn can_draw(&self, s: &str) -> bool {
+        s.chars().all(|c| self.has(c))
+    }
+
     /// 描けない文字を「?」に置き換える。
     pub fn drawable(&self, text: &str) -> String {
         text.chars()
@@ -108,7 +113,7 @@ impl Text {
         font_size: f32,
         color: Color,
     ) {
-        let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
+        let dimensions = self.measure(text, font_size);
         self.draw(
             text,
             center_x - dimensions.width / 2.0,
@@ -120,21 +125,28 @@ impl Text {
 
     /// `center` が文字の中心になるように描く。ボタンの文字に使う。
     pub fn draw_y_centered_middle(&self, text: &str, center: Vec2, font_size: f32, color: Color) {
-        let width = self.measure(text, font_size).width;
-        self.draw_y_centered(text, center.x - width / 2.0, center.y, font_size, color);
-    }
-
-    /// `center_y` が文字の縦の中心になるように描く。`x` は左端。
-    pub fn draw_y_centered(&self, text: &str, x: f32, center_y: f32, font_size: f32, color: Color) {
-        let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
+        let dimensions = self.measure(text, font_size);
         // draw の y はベースライン。文字はそこから offset_y 上、height の高さに収まる。
         self.draw(
             text,
-            x,
-            center_y + dimensions.offset_y - dimensions.height / 2.0,
+            center.x - dimensions.width / 2.0,
+            center.y + dimensions.offset_y - dimensions.height / 2.0,
             font_size,
             color,
         );
+    }
+
+    /// `right` が右端になるように描く。
+    pub fn draw_right(
+        &self,
+        text: &str,
+        right: f32,
+        baseline_y: f32,
+        font_size: f32,
+        color: Color,
+    ) {
+        let width = self.measure(text, font_size).width;
+        self.draw(text, right - width, baseline_y, font_size, color);
     }
 }
 

@@ -251,32 +251,47 @@ pub fn draw_sprite(texture: &Texture2D, center: Vec2, color: Color) {
     );
 }
 
+/// ドットの格子の番号。
+type Cell = (i32, i32);
+
+/// 点が入っているドットの格子の番号。
+fn cell_of(p: Vec2) -> Cell {
+    (
+        (p.x / SPRITE_DOT).floor() as i32,
+        (p.y / SPRITE_DOT).floor() as i32,
+    )
+}
+
+/// ドットの格子の中心の点。
+fn cell_center((x, y): Cell) -> Vec2 {
+    vec2(x as f32 + 0.5, y as f32 + 0.5) * SPRITE_DOT
+}
+
+/// ドット 1 つを描く。
+fn fill_cell((x, y): Cell, color: Color) {
+    draw_rectangle(
+        x as f32 * SPRITE_DOT,
+        y as f32 * SPRITE_DOT,
+        SPRITE_DOT,
+        SPRITE_DOT,
+        color,
+    );
+}
+
 /// ドットの格子の上に、`a` から `b` へ 1 ドットの太さの線を描く。
 /// `with_start` が偽なら始点のドットを描かない。折れ線をつなぐとき、継ぎ目のドットを重ねて濃くしない。
 pub fn draw_dot_line(a: Vec2, b: Vec2, color: Color, with_start: bool) {
-    for (i, (x, y)) in dot_line(a, b).into_iter().enumerate() {
+    for (i, cell) in dot_line(a, b).into_iter().enumerate() {
         if i > 0 || with_start {
-            draw_rectangle(
-                x as f32 * SPRITE_DOT,
-                y as f32 * SPRITE_DOT,
-                SPRITE_DOT,
-                SPRITE_DOT,
-                color,
-            );
+            fill_cell(cell, color);
         }
     }
 }
 
 /// `a` から `b` までの線が通るドットの格子の番号（ブレゼンハムの方法）。始点と終点を含む。
-fn dot_line(a: Vec2, b: Vec2) -> Vec<(i32, i32)> {
-    let cell = |p: Vec2| {
-        (
-            (p.x / SPRITE_DOT).floor() as i32,
-            (p.y / SPRITE_DOT).floor() as i32,
-        )
-    };
-    let (mut x, mut y) = cell(a);
-    let (x1, y1) = cell(b);
+fn dot_line(a: Vec2, b: Vec2) -> Vec<Cell> {
+    let (mut x, mut y) = cell_of(a);
+    let (x1, y1) = cell_of(b);
     let dx = (x1 - x).abs();
     let dy = -(y1 - y).abs();
     let sx = if x < x1 { 1 } else { -1 };
@@ -343,26 +358,20 @@ fn direction4(toward: Vec2) -> IVec2 {
     }
 }
 
-/// ドットの格子の番号。
-type Cell = (i32, i32);
-
 /// フックを形作るドットの格子の番号と色。`tail` は柄の端のマス。
 fn hook_cells(point: Vec2, toward: Vec2) -> (Vec<(Cell, Color)>, Cell) {
     let u = direction4(toward);
     // 形の横（右が正）は、ワイヤーの向きを時計回りに 90 度回した向き。下へ引くとき右を向く。
     let side = ivec2(-u.y, u.x);
-    let origin = ivec2(
-        (point.x / SPRITE_DOT).floor() as i32,
-        (point.y / SPRITE_DOT).floor() as i32,
-    );
+    let (ox, oy) = cell_of(point);
+    let origin = ivec2(ox, oy);
     let place = |(x, y): (i32, i32)| {
         let cell = origin + side * x + u * y;
         (cell.x, cell.y)
     };
-    let center = |(x, y): (i32, i32)| vec2(x as f32 + 0.5, y as f32 + 0.5) * SPRITE_DOT;
     let mut cells = Vec::new();
     for (a, b) in HOOK_LINES.iter().chain(&HOOK_DIAGONALS) {
-        for cell in dot_line(center(place(*a)), center(place(*b))) {
+        for cell in dot_line(cell_center(place(*a)), cell_center(place(*b))) {
             cells.push((cell, HOOK_COLOR));
         }
     }
@@ -380,21 +389,14 @@ fn hook_cells(point: Vec2, toward: Vec2) -> (Vec<(Cell, Color)>, Cell) {
 /// 戻っている間は自機への向きを渡す。上下左右に丸めて描く。ワイヤーは `hook_tail` からつなぎ、フックはその上に描く。
 /// 地形より先に描けば、地形に食い込んだ爪の先は地形に隠れる。
 pub fn draw_dot_hook(point: Vec2, toward: Vec2) {
-    for ((x, y), color) in hook_cells(point, toward).0 {
-        draw_rectangle(
-            x as f32 * SPRITE_DOT,
-            y as f32 * SPRITE_DOT,
-            SPRITE_DOT,
-            SPRITE_DOT,
-            color,
-        );
+    for (cell, color) in hook_cells(point, toward).0 {
+        fill_cell(cell, color);
     }
 }
 
 /// `draw_dot_hook` と同じ置き方をしたフックの、ワイヤーをつなぐ輪の下のマスの中心。
 pub fn hook_tail(point: Vec2, toward: Vec2) -> Vec2 {
-    let tail = hook_cells(point, toward).1;
-    vec2(tail.0 as f32 + 0.5, tail.1 as f32 + 0.5) * SPRITE_DOT
+    cell_center(hook_cells(point, toward).1)
 }
 
 /// 画面の文字と同じ座標で、絵を `center` を中心に、ドット 1 つを `dot` ピクセルで描く。

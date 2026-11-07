@@ -27,10 +27,9 @@ pub enum NameFont {
 impl NameFont {
     /// 描く名前を見せる。同梱のフォントで描けない文字があれば、名前用のフォントを読み始める。
     pub fn want(&mut self, fonts: &Fonts, name: &str) {
-        let drawable = |text: &Text| name.chars().all(|c| text.has(c));
         if matches!(self, Self::NotNeeded)
-            && !drawable(&fonts.heading)
-            && !drawable(&fonts.japanese)
+            && !fonts.heading.can_draw(name)
+            && !fonts.japanese.can_draw(name)
         {
             *self = Self::Loading(start_coroutine(async { load_file(NAMES_FONT).await.ok() }));
         }
@@ -64,10 +63,9 @@ impl NameFont {
         heading_size: f32,
         size: f32,
     ) -> (&'a Text, String, f32) {
-        let drawable = |text: &Text| name.chars().all(|c| text.has(c));
-        if drawable(&fonts.heading) {
+        if fonts.heading.can_draw(name) {
             (&fonts.heading, name.to_owned(), heading_size)
-        } else if drawable(&fonts.japanese) {
+        } else if fonts.japanese.can_draw(name) {
             (&fonts.japanese, name.to_owned(), size)
         } else if let Self::Ready(names) = self {
             (names, names.drawable(name), size)

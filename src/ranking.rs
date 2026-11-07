@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 use roommate_sdk::{Ranking, RankingStatus};
 
 use crate::names::NameFont;
-use crate::text::{self, Fonts, Text};
+use crate::text::{self, Fonts};
 
 /// 上位から出す行数の上限。画面が低いときはこれより減らす。
 pub const MAX_ROWS: usize = 5;
@@ -120,11 +120,11 @@ impl Board {
                 } => {
                     let color = if mine { MINE_COLOR } else { ROW_COLOR };
                     // 順位とスコアの数字は、見分けやすい見出しのフォントで描く。
-                    draw_right(
-                        &fonts.heading,
+                    fonts.heading.draw_right(
                         &format!("#{rank}"),
                         left + RANK_RIGHT,
                         baseline + HEADING_DROP,
+                        text::HEAD_MEDIUM,
                         color,
                     );
                     let (font, name, size) =
@@ -135,11 +135,11 @@ impl Board {
                         0.0
                     };
                     font.draw(&name, left + NAME_LEFT, baseline + drop, size, color);
-                    draw_right(
-                        &fonts.heading,
+                    fonts.heading.draw_right(
                         &score.to_string(),
                         left + WIDTH,
                         baseline + HEADING_DROP,
+                        text::HEAD_MEDIUM,
                         color,
                     );
                 }
@@ -153,11 +153,6 @@ impl Board {
             }
         }
     }
-}
-
-fn draw_right(heading: &Text, s: &str, right: f32, baseline: f32, color: Color) {
-    let width = heading.measure(s, text::HEAD_MEDIUM).width;
-    heading.draw(s, right - width, baseline, text::HEAD_MEDIUM, color);
 }
 
 /// 表の中身。見出しの下に並べる順。

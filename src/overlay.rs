@@ -250,8 +250,7 @@ pub(crate) fn draw_paused(fonts: &Fonts, screen: Vec2, layout: &PauseLayout, poi
     let action_color = Color::from_rgba(225, 230, 240, 255);
     for (i, (key, action)) in CONTROLS.iter().enumerate() {
         let y = area.y + CONTROLS_PAD.y + CONTROLS_HEADING + CONTROL_ROW * (i as f32 + 1.0) - 12.0;
-        let width = text.measure(key, text::MEDIUM).width;
-        text.draw(key, divider - width, y, text::MEDIUM, key_color);
+        text.draw_right(key, divider, y, text::MEDIUM, key_color);
         text.draw(
             action,
             divider + CONTROLS_GUTTER,

@@ -30,20 +30,20 @@ const fn rgb(r: u8, g: u8, b: u8) -> Color {
     Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
 }
 
+/// 夕焼け。一巡の始まりと終わりで同じ色にし、つなぎ目を見せない。
+const DUSK: Palette = Palette {
+    sky_top: rgb(34, 26, 58),
+    sky_bottom: rgb(150, 70, 70),
+    far: rgb(70, 40, 62),
+    near: rgb(26, 18, 34),
+    stars: 0.15,
+    windows: 0.5,
+};
+
 /// 時間帯の色と、その色になる距離（m、一巡の中での位置）。間は混ぜる。
 const KEYS: [(f32, Palette); 4] = [
-    (
-        0.0,
-        // 夕焼け
-        Palette {
-            sky_top: rgb(34, 26, 58),
-            sky_bottom: rgb(150, 70, 70),
-            far: rgb(70, 40, 62),
-            near: rgb(26, 18, 34),
-            stars: 0.15,
-            windows: 0.5,
-        },
-    ),
+    // 夕焼け
+    (0.0, DUSK),
     (
         1200.0,
         // 夜
@@ -68,18 +68,8 @@ const KEYS: [(f32, Palette); 4] = [
             windows: 0.4,
         },
     ),
-    (
-        CYCLE,
-        // 一巡して夕焼けへ戻る
-        Palette {
-            sky_top: rgb(34, 26, 58),
-            sky_bottom: rgb(150, 70, 70),
-            far: rgb(70, 40, 62),
-            near: rgb(26, 18, 34),
-            stars: 0.15,
-            windows: 0.5,
-        },
-    ),
+    // 一巡して夕焼けへ戻る
+    (CYCLE, DUSK),
 ];
 
 /// ビルの層。`speed` はカメラに対して流れる割合（0 なら止まって見え、1 なら地形と同じ速さ）。

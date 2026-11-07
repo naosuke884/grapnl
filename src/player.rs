@@ -293,6 +293,12 @@ impl Player {
         level.raycast(self.position, dir, MAX_WIRE_LENGTH)
     }
 
+    /// `aim` の向きへ撃ったときにワイヤーが伸び切る点。刺さるかどうかは見ない。向きが決まらないときは `None`。
+    pub fn reach_end(&self, aim: Vec2) -> Option<Vec2> {
+        let dir = (aim - self.position).try_normalize()?;
+        Some(self.position + dir * MAX_WIRE_LENGTH)
+    }
+
     pub fn draw(&self) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
@@ -473,6 +479,14 @@ mod tests {
         }
         let middle = player.rope[ROPE_POINTS / 2];
         assert!(middle.y > 50.0, "{middle}");
+    }
+
+    #[test]
+    fn reach_end_is_the_full_wire_length_toward_the_cursor() {
+        let player = Player::new(vec2(100.0, 300.0));
+        let end = player.reach_end(vec2(100.0, 400.0)).unwrap();
+        assert!((end - vec2(100.0, 300.0 + MAX_WIRE_LENGTH)).length() < 1e-3);
+        assert!(player.reach_end(player.position).is_none());
     }
 
     #[test]

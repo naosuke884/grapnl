@@ -5,6 +5,8 @@ use crate::generator::Generator;
 use crate::level::Level;
 use crate::particles::Particles;
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
+use crate::score_popup::Popups;
+use crate::text::Text;
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
 pub const FALL_LIMIT_Y: f32 = 1800.0;
@@ -26,7 +28,7 @@ const START_FLAT_WIDTH: f32 = 1100.0;
 /// 敵との当たり判定は見た目より小さくし、かすっただけでは終わらないようにする。
 const PLAYER_HURT_RADIUS: f32 = PLAYER_RADIUS * 0.7;
 /// 敵 1 体の基本の得点。連鎖の倍率を掛けて入る。
-const KILL_POINTS: u32 = 100;
+pub const KILL_POINTS: u32 = 100;
 /// 連鎖の倍率の上限。上限がないと連鎖を続けるほど点が伸び、サーバーの「1 秒あたりのスコアの上限」（500）で
 /// ありえない速さのスコアを見分けられなくなる。上限の倍率でも 1 体 500 点にとどめる。
 pub const MAX_MULTIPLIER: u32 = 5;
@@ -126,9 +128,10 @@ pub struct Game {
     pub elapsed: f32,
     /// この `step` で起きた出来事。次の `step` の始めに空になる（`Vec` の容量は残す）。
     /// 1 フレームに `step` が複数回走るので、音や画面揺れは `step` の直後にここを読む。
-    /// 破片もここから飛ぶ。
+    /// 破片と、倒した場所に出る得点もここから出る。
     pub events: Vec<Event>,
     particles: Particles,
+    popups: Popups,
 }
 
 impl Game {
@@ -171,13 +174,15 @@ impl Game {
             elapsed: 0.0,
             events: Vec::with_capacity(8),
             particles: Particles::new(seed),
+            popups: Popups::new(),
         }
     }
 
-    /// 出来事を残し、破片を出すものなら同じ場所から出す。
+    /// 出来事を残し、破片や得点を出すものなら同じ場所から出す。
     fn emit(&mut self, event: Event) {
         self.events.push(event);
         self.particles.spawn(event);
+        self.popups.spawn(event);
     }
 
     pub fn step(&mut self, mut input: WireInput, dt: f32) {
@@ -257,6 +262,7 @@ impl Game {
             self.emit(Event::GameOver);
         }
         self.particles.update(dt);
+        self.popups.update(dt);
     }
 
     /// `aim` の方向へ撃ったとき、地形より手前で当たる敵の番号と当たる点。
@@ -296,7 +302,8 @@ impl Game {
         Some((world / UNITS_PER_METER).max(0.0))
     }
 
-    pub fn draw(&self) {
+    /// ワールド座標のカメラ（`VIEW_HEIGHT` を画面の高さに映す）の下で呼ぶ。
+    pub fn draw(&self, text: &Text) {
         // 左から迫ってくる領域。右端に明るい線を引いて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
         let hazard_left = self.hazard_x - 10_000.0;
@@ -338,6 +345,8 @@ impl Game {
         self.player.draw();
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();
+        // 入った得点は破片より手前に出し、何点入ったかを読めるようにする。
+        self.popups.draw(text, VIEW_HEIGHT / screen_height());
     }
 }
 
@@ -865,6 +874,11 @@ mod tests {
             (ENEMY_COLOR.r, ENEMY_COLOR.g, ENEMY_COLOR.b)
         );
         assert!(color.a > 0.5);
+        // 倒した場所に、入った点が出る。
+        let popups: Vec<_> = game.popups.alive().collect();
+        assert_eq!(popups.len(), 1);
+        assert_eq!(popups[0].label(), "+100");
+        assert!(popups[0].position.distance(at) < 15.0);
 
         // 次の更新ではきっかけは空になる。飛んでいる破片はそのまま残る。
         let capacity = game.events.capacity();
@@ -872,6 +886,7 @@ mod tests {
         assert!(game.events.is_empty());
         assert_eq!(game.events.capacity(), capacity);
         assert!(game.particles.alive_count() > 0);
+        assert_eq!(game.popups.alive().count(), 1);
     }
 
     #[test]

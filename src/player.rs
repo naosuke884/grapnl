@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
+use crate::sprites::{draw_dot_line, draw_hook, draw_sprite, Sprites};
 
 use crate::level::Level;
 
@@ -301,7 +301,8 @@ impl Player {
         Some(self.position + dir * MAX_WIRE_LENGTH)
     }
 
-    pub fn draw(&self, sprites: &Sprites) {
+    /// `hook_normal` は刺さっている面の外向き。フックの向きに使う。
+    pub fn draw(&self, sprites: &Sprites, hook_normal: Vec2) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
             if self.rope.len() == ROPE_POINTS {
@@ -311,7 +312,7 @@ impl Player {
             } else {
                 draw_dot_line(self.position, anchor.point, wire_color, true);
             }
-            draw_sprite(&sprites.hook, anchor.point, wire_color);
+            draw_hook(&sprites.hook, anchor.point, hook_normal);
         }
         if let Some((from, left)) = self.retract {
             // 戻り始めた位置から手元へ縮んでいくように描く。

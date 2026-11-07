@@ -357,7 +357,11 @@ impl Game {
                 );
             }
         }
-        self.player.draw(sprites);
+        let hook_normal = self
+            .player
+            .anchor
+            .map_or(Vec2::Y, |anchor| self.level.surface_normal(anchor.point));
+        self.player.draw(sprites, hook_normal);
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();
         // 入った得点は破片より手前に出し、何点入ったかを読めるようにする。

@@ -103,8 +103,10 @@ const TILE_PALETTE: &[(char, Color)] = &[
     ('L', Color::new(0.27, 0.32, 0.43, 1.0)),
     ('S', Color::new(0.13, 0.15, 0.22, 1.0)),
 ];
-/// ブロックの縁。ワイヤーを刺せる面が見えるよう、明るい色で 1 ドット分囲む。
-const EDGE_COLOR: Color = Color::new(0.47, 0.71, 1.0, 1.0);
+/// ブロックの縁。暗い輪郭で囲み、その内側の上と左を明るく、下と右を暗くして、石の塊に見せる。
+const OUTLINE_COLOR: Color = Color::new(0.05, 0.06, 0.10, 1.0);
+const LIT_COLOR: Color = Color::new(0.42, 0.55, 0.78, 1.0);
+const SHADE_COLOR: Color = Color::new(0.14, 0.17, 0.25, 1.0);
 
 /// 撃てば刺さる点に出す照準。白で描き、使うときに色を掛ける。7×7。
 const AIM: &[&str] = &[
@@ -116,10 +118,15 @@ const OUT_OF_REACH: &[&str] = &[
     "XX...XX", //
     ".XX.XX.", "..XXX..", "...X...", "..XXX..", ".XX.XX.", "XX...XX",
 ];
-/// ワイヤーの刺さった先。3×3。
+/// ワイヤーの先のフック。上を向いた爪を地形に食い込ませた形。7×7 で、一番上の行が刺さった面に来る。
+/// 刺さった面の向きに合わせて 90 度ずつ回して描く。
 const HOOK: &[&str] = &[
-    ".X.", //
-    "XXX", ".X.",
+    "L.....L", //
+    "L.....L", "DL...LD", ".DL.LD.", "..DLD..", "...L...", "...D...",
+];
+const HOOK_PALETTE: &[(char, Color)] = &[
+    ('L', Color::new(0.86, 0.88, 0.92, 1.0)),
+    ('D', Color::new(0.48, 0.52, 0.60, 1.0)),
 ];
 const MARK_PALETTE: &[(char, Color)] = &[('X', WHITE)];
 
@@ -147,12 +154,29 @@ impl Sprites {
             tile: texture(&image(TILE, TILE_PALETTE)),
             aim: texture(&image(AIM, MARK_PALETTE)),
             out_of_reach: texture(&image(OUT_OF_REACH, MARK_PALETTE)),
-            hook: texture(&image(HOOK, MARK_PALETTE)),
+            hook: texture(&image(HOOK, HOOK_PALETTE)),
         }
     }
 
     /// 地形のブロックを、模様を敷き詰めて縁を付けて描く。
     pub fn draw_block(&self, block: Rect) {
+        // 縁がドットの格子からずれないよう、描く範囲を格子に揃える（判定は元のまま）。
+        let snap = |v: f32| (v / TILE_DOT).round() * TILE_DOT;
+        let (left, top) = (snap(block.x), snap(block.y));
+        let block = Rect::new(
+            left,
+            top,
+            snap(block.right()) - left,
+            snap(block.bottom()) - top,
+        );
+        // 模様は輪郭の内側だけに敷く。角のドットを空けて、角を丸く見せる。
+        let outer = block;
+        let block = Rect::new(
+            block.x + TILE_DOT,
+            block.y + TILE_DOT,
+            block.w - 2.0 * TILE_DOT,
+            block.h - 2.0 * TILE_DOT,
+        );
         let size = TILE.len() as f32 * TILE_DOT;
         // 模様はワールドの格子に合わせ、ブロックの位置によって模様がずれないようにする。
         let mut y = (block.y / size).floor() * size;
@@ -183,11 +207,18 @@ impl Sprites {
             }
             y += size;
         }
-        let edge = TILE_DOT;
-        draw_rectangle(block.x, block.y, block.w, edge, EDGE_COLOR);
-        draw_rectangle(block.x, block.bottom() - edge, block.w, edge, EDGE_COLOR);
-        draw_rectangle(block.x, block.y, edge, block.h, EDGE_COLOR);
-        draw_rectangle(block.right() - edge, block.y, edge, block.h, EDGE_COLOR);
+        let d = TILE_DOT;
+        let (x, y, w, h) = (outer.x, outer.y, outer.w, outer.h);
+        // 内側の明るい面と暗い面。
+        draw_rectangle(x + d, y + d, w - 2.0 * d, d, LIT_COLOR);
+        draw_rectangle(x + d, y + d, d, h - 2.0 * d, LIT_COLOR);
+        draw_rectangle(x + d, y + h - 2.0 * d, w - 2.0 * d, d, SHADE_COLOR);
+        draw_rectangle(x + w - 2.0 * d, y + 2.0 * d, d, h - 3.0 * d, SHADE_COLOR);
+        // 暗い輪郭。角のドットは抜いて、角を少し丸める。
+        draw_rectangle(x + d, y, w - 2.0 * d, d, OUTLINE_COLOR);
+        draw_rectangle(x + d, y + h - d, w - 2.0 * d, d, OUTLINE_COLOR);
+        draw_rectangle(x, y + d, d, h - 2.0 * d, OUTLINE_COLOR);
+        draw_rectangle(x + w - d, y + d, d, h - 2.0 * d, OUTLINE_COLOR);
     }
 }
 
@@ -263,6 +294,25 @@ pub fn draw_dot_square(center: Vec2, size: f32, color: Color) {
     draw_rectangle(x, y, side, side, color);
 }
 
+/// フックを、爪の先が `point` に来るように描く。`normal` は刺さった面から外へ向く向き（上下左右のどれか）。
+pub fn draw_hook(texture: &Texture2D, point: Vec2, normal: Vec2) {
+    let size = vec2(texture.width(), texture.height()) * SPRITE_DOT;
+    // 絵は爪が上（面の外向きが下）。外向きが下なら回さず、そこから向きに合わせて回す。
+    let rotation = normal.y.atan2(normal.x) - std::f32::consts::FRAC_PI_2;
+    let center = point + normal * (size.y / 2.0);
+    draw_texture_ex(
+        texture,
+        center.x - size.x / 2.0,
+        center.y - size.y / 2.0,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(size),
+            rotation,
+            ..Default::default()
+        },
+    );
+}
+
 fn texture(image: &Image) -> Texture2D {
     let texture = Texture2D::from_image(image);
     texture.set_filter(FilterMode::Nearest);
@@ -305,7 +355,7 @@ mod tests {
     const ALL: [(&str, &[&str], Palette); 8] = [
         ("AIM", AIM, MARK_PALETTE),
         ("OUT_OF_REACH", OUT_OF_REACH, MARK_PALETTE),
-        ("HOOK", HOOK, MARK_PALETTE),
+        ("HOOK", HOOK, HOOK_PALETTE),
         ("PLAYER", PLAYER, PLAYER_PALETTE),
         ("FLOATER", FLOATER, ENEMY_PALETTE),
         ("BOBBER", BOBBER, ENEMY_PALETTE),

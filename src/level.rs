@@ -54,6 +54,28 @@ impl Level {
         normal.map(|normal| Contact { position, normal })
     }
 
+    /// 刺さった点 `point` がある地形の面の、外へ向く向き（上下左右のどれか）。
+    /// 一番近いブロックの、一番近い辺で決める。地形が無ければ下向き（天井の下の面）。
+    pub fn surface_normal(&self, point: Vec2) -> Vec2 {
+        let Some(block) = self
+            .blocks
+            .iter()
+            .min_by(|a, b| distance_to_rect(point, **a).total_cmp(&distance_to_rect(point, **b)))
+        else {
+            return Vec2::Y;
+        };
+        let sides = [
+            ((point.y - block.y).abs(), -Vec2::Y),
+            ((block.bottom() - point.y).abs(), Vec2::Y),
+            ((point.x - block.x).abs(), -Vec2::X),
+            ((block.right() - point.x).abs(), Vec2::X),
+        ];
+        sides
+            .into_iter()
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map_or(Vec2::Y, |(_, normal)| normal)
+    }
+
     pub fn draw(&self, sprites: &Sprites) {
         for &block in &self.blocks {
             sprites.draw_block(block);
@@ -115,6 +137,13 @@ fn push_circle_out_of_rect(center: Vec2, radius: f32, rect: Rect) -> Option<(Vec
     Some((center + normal * (depth + radius), normal))
 }
 
+/// 点から長方形までの距離。中なら 0。
+fn distance_to_rect(point: Vec2, rect: Rect) -> f32 {
+    let dx = (rect.x - point.x).max(point.x - rect.right()).max(0.0);
+    let dy = (rect.y - point.y).max(point.y - rect.bottom()).max(0.0);
+    vec2(dx, dy).length()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +178,17 @@ mod tests {
         level.add(Rect::new(450.0, 200.0, 100.0, 50.0));
         let hit = level.raycast(vec2(500.0, 400.0), vec2(0.0, -1.0), 1000.0);
         assert_eq!(hit, Some(vec2(500.0, 250.0)));
+    }
+
+    #[test]
+    fn surface_normal_points_out_of_the_nearest_side() {
+        let level = Level {
+            blocks: vec![Rect::new(0.0, 0.0, 200.0, 100.0)],
+        };
+        assert_eq!(level.surface_normal(vec2(50.0, 100.0)), Vec2::Y);
+        assert_eq!(level.surface_normal(vec2(50.0, 0.0)), -Vec2::Y);
+        assert_eq!(level.surface_normal(vec2(0.0, 50.0)), -Vec2::X);
+        assert_eq!(level.surface_normal(vec2(200.0, 40.0)), Vec2::X);
     }
 
     #[test]

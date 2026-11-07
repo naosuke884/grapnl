@@ -11,7 +11,7 @@ jobs:
   commit-messages:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # 範囲の手前のコミットまで要る。
           fetch-depth: 0
@@ -40,7 +40,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # macroquad のネイティブビルドに要るライブラリ（README の「必要なもの」と同じ）
       - name: Install system libraries
@@ -73,7 +73,7 @@ jobs:
           install -m 644 target/wasm32-unknown-unknown/release/grapnl.wasm web/grapnl.wasm
           scripts/stage-web.sh dist "$GITHUB_SHA"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           name: web
@@ -92,11 +92,11 @@ jobs:
       group: deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web
           path: dist/

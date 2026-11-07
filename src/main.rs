@@ -249,6 +249,15 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
     );
     let center = vec2(screen_width(), screen_height()) / 2.0;
     text.draw_centered("ゲームオーバー", center.x, center.y - 20.0, 56.0, WHITE);
+    if let Some(reason) = game.end_reason {
+        text.draw_centered(
+            reason.label(),
+            center.x,
+            center.y + 24.0,
+            28.0,
+            Color::from_rgba(255, 140, 120, 255),
+        );
+    }
     text.draw_centered(
         &format!(
             "スコア {}（{:.0} m・撃破 {}）   自己ベスト {high_score}",
@@ -257,7 +266,7 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
             game.kills
         ),
         center.x,
-        center.y + 24.0,
+        center.y + 62.0,
         28.0,
         WHITE,
     );
@@ -265,7 +274,7 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
         text.draw_centered(
             "クリックか R かスペースでもう一度",
             center.x,
-            center.y + 64.0,
+            center.y + 102.0,
             24.0,
             Color::from_rgba(180, 190, 205, 255),
         );

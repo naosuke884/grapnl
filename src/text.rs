@@ -68,6 +68,34 @@ impl Text {
     }
 }
 
+impl Text {
+    /// 画面のピクセルではなくカメラの座標で、`center` が文字の中心になるように描く。
+    /// 文字の画像は `raster`（`SIZES` のどれか）の大きさで作り、`scale` 倍して描く。
+    /// ワールド座標のカメラの下では、`scale` に画面の 1 ピクセルに映るワールドの幅を掛けて渡す。
+    pub fn draw_scaled_centered(
+        &self,
+        text: &str,
+        center: Vec2,
+        raster: u16,
+        scale: f32,
+        color: Color,
+    ) {
+        let dimensions = measure_text(text, Some(&self.font), raster, scale);
+        draw_text_ex(
+            text,
+            center.x - dimensions.width / 2.0,
+            center.y + dimensions.offset_y - dimensions.height / 2.0,
+            TextParams {
+                font: Some(&self.font),
+                font_size: raster,
+                font_scale: scale,
+                color,
+                ..Default::default()
+            },
+        );
+    }
+}
+
 /// 絞ったフォントに入っている文字。
 fn font_chars() -> Vec<char> {
     let mut chars = Vec::new();
@@ -145,7 +173,7 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 12] = [
+    const SOURCES: [(&str, &str); 13] = [
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),
@@ -154,6 +182,7 @@ mod tests {
         ("particles.rs", include_str!("particles.rs")),
         ("player.rs", include_str!("player.rs")),
         ("realtime.rs", include_str!("realtime.rs")),
+        ("score_popup.rs", include_str!("score_popup.rs")),
         ("sfx.rs", include_str!("sfx.rs")),
         ("shadow.rs", include_str!("shadow.rs")),
         ("shake.rs", include_str!("shake.rs")),

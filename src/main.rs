@@ -5,6 +5,7 @@ mod level;
 mod particles;
 mod player;
 mod realtime;
+mod score_popup;
 mod sfx;
 mod shadow;
 mod shake;
@@ -133,7 +134,7 @@ async fn main() {
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now);
-        game.draw();
+        game.draw(&text);
 
         set_default_camera();
         text.draw(

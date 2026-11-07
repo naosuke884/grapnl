@@ -285,21 +285,6 @@ async fn main() {
                 Color::from_rgba(150, 160, 175, 200),
             );
         }
-        if game.chain > 0 {
-            let multiplier = game.next_multiplier();
-            let max = if multiplier == game::MAX_MULTIPLIER {
-                " MAX"
-            } else {
-                ""
-            };
-            text.draw(
-                &format!("Chain x{multiplier}{max}"),
-                16.0,
-                88.0,
-                text::MEDIUM,
-                Color::from_rgba(255, 200, 80, 255),
-            );
-        }
         if pause.paused() {
             draw_paused(&text, screen, pointer);
             volume_panel.draw(&sprites, &volume, hovered);

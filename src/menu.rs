@@ -193,15 +193,23 @@ pub const NOTICE: Color = Color::new(1.0, 0.8, 0.35, 1.0);
 /// データを消した後に出しておく注意。結果の画面を閉じた後も、タイトルとゲームオーバーに出す。
 pub const NOT_RECORDED: &str = "データを消したので、ページを開き直すまでスコアは記録されません";
 
-pub fn draw(text: &Text, menu: Menu, status: DeleteStatus, buttons: &[Button], mouse: Vec2) {
+/// `screen` はワールドを映す範囲の大きさ。ボタンと同じく、その左上を原点にして描く。
+pub fn draw(
+    text: &Text,
+    menu: Menu,
+    status: DeleteStatus,
+    buttons: &[Button],
+    mouse: Vec2,
+    screen: Vec2,
+) {
     draw_rectangle(
         0.0,
         0.0,
-        screen_width(),
-        screen_height(),
+        screen.x,
+        screen.y,
         Color::from_rgba(0, 0, 0, if menu == Menu::Title { 110 } else { 190 }),
     );
-    let center = vec2(screen_width(), screen_height()) / 2.0;
+    let center = screen / 2.0;
     let lines = |lines: &[&str], top: f32, color: Color| {
         for (i, line) in lines.iter().enumerate() {
             text.draw_centered(line, center.x, top + i as f32 * 34.0, 22.0, color);

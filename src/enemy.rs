@@ -1,6 +1,9 @@
 use macroquad::prelude::*;
 use macroquad::rand::RandGenerator;
 
+use crate::shake::GAME_OVER_MAGNITUDE;
+use crate::view::MAX_VIEW_WIDTH;
+
 /// 敵の大きさ。ワイヤーを当てる的と、触れたら終わる判定の両方に使う。
 /// 画面を引いて広く映しているので、狙いやすいよう大きめにする。
 pub const ENEMY_RADIUS: f32 = 32.0;
@@ -17,8 +20,13 @@ const DRIFT_SPEED: f32 = 120.0;
 const SWAY: f32 = 60.0;
 /// 揺れの速さ（ラジアン毎秒）。
 const SWAY_RATE: f32 = 1.5;
-/// 敵は、最も右まで進んだときのカメラ左端からこれだけ先に出す。16:9 の画面の右端より少し外。
+/// 敵は、最も右まで進んだときのカメラ左端からこれだけ先に出す。
+/// 映す横幅の上限（`MAX_VIEW_WIDTH`、16:9 の横幅）の右端より少し外で、どの画面でも画面の中に急に現れない。
 const SPAWN_OFFSET: f32 = 3500.0;
+// カメラは自機を追いかけるので、カメラ左端は最も右まで進んだときのカメラ左端より右へは行かない。
+// 画面の右端はそこから `MAX_VIEW_WIDTH` 以内で、揺れても `GAME_OVER_MAGNITUDE` 以上はずれない。
+// 出たばかりの敵が、その外に丸ごと収まるようにする。
+const _: () = assert!(SPAWN_OFFSET - ENEMY_RADIUS > MAX_VIEW_WIDTH + GAME_OVER_MAGNITUDE);
 /// カメラ左端よりこれだけ左へ流れた敵は消す。
 const DISCARD_BEHIND: f32 = 200.0;
 /// 開始時のカメラ左端からこれだけ（100 m）進むまで敵を出さない。

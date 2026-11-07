@@ -214,7 +214,7 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 22] = [
+    const SOURCES: [(&str, &str); 21] = [
         ("bgm.rs", include_str!("bgm.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
@@ -234,7 +234,6 @@ mod tests {
         ("shake.rs", include_str!("shake.rs")),
         ("sprites.rs", include_str!("sprites.rs")),
         ("text.rs", include_str!("text.rs")),
-        ("tutorial.rs", include_str!("tutorial.rs")),
         ("view.rs", include_str!("view.rs")),
         ("volume.rs", include_str!("volume.rs")),
     ];

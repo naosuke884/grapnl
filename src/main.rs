@@ -16,7 +16,6 @@ mod shadow;
 mod shake;
 mod sprites;
 mod text;
-mod tutorial;
 mod view;
 mod volume;
 
@@ -31,7 +30,6 @@ use ranking::Board;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
-use tutorial::Tutorial;
 use view::Playfield;
 use volume::Volume;
 
@@ -83,8 +81,6 @@ async fn main() {
     let mut hit_stop = HitStop::default();
     let mut pause = Pause::default();
     let mut volume = Volume::load();
-    // 最初の数回のプレイだけ、画面下に操作の説明を吹き出しで出す。
-    let mut tutorial = Tutorial::load();
     // ゲームオーバーの画面に出す今日のランキング。
     let mut board = Board::default();
 
@@ -155,7 +151,6 @@ async fn main() {
                 accumulator = 0.0;
                 since_over = 0.0;
                 hit_stop = HitStop::default();
-                tutorial.restart();
                 board.reset();
             }
             wire_pressed = false;
@@ -170,7 +165,6 @@ async fn main() {
                     boost: boost_pressed,
                 };
                 game.step(input, FIXED_DT);
-                tutorial.observe(&game.events, FIXED_DT);
                 for event in &game.events {
                     sfx.play(event, volume.gain());
                     shake.kick(event);
@@ -181,7 +175,6 @@ async fn main() {
                 accumulator -= FIXED_DT;
             }
             if game.over {
-                tutorial.finish_run();
                 // 送る前の自己ベストと比べる。送るとすぐ自己ベストが上がる。
                 new_best = game.score() > 0
                     && roommate_sdk::best_score().is_none_or(|best| game.score() > best);
@@ -270,9 +263,6 @@ async fn main() {
                 text::MEDIUM,
                 Color::from_rgba(255, 200, 80, 255),
             );
-        }
-        if !game.over && !pause.paused() {
-            tutorial.draw(&text, screen, game.player.anchor.is_some());
         }
         if pause.paused() {
             draw_paused(&text, screen);

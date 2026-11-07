@@ -52,8 +52,6 @@ async fn main() {
     let mut shadows = Shadows::default();
     // 次に自機の状態を影の部屋へ送るまでの時間。
     let mut until_send = 0.0;
-    // 自己ベストは roommate-sdk がサーバーと端末の大きいほうを返す。サーバーの分は後から届くので、毎フレーム読む。
-    let mut high_score = 0;
     let mut accumulator = 0.0;
     // ゲームオーバーになってからの経過時間。
     let mut since_over = 0.0;
@@ -114,7 +112,9 @@ async fn main() {
             }
         }
 
-        high_score = high_score.max(roommate_sdk::best_score().unwrap_or(0));
+        // 自己ベストは roommate-sdk が持つ。開いた後にサーバーの値が届くと下がることもあり、
+        // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
+        let best = best_label(roommate_sdk::best_score());
         let now = get_time();
         while let Some(message) = realtime::receive() {
             if let Some(incoming) = shadow::read_incoming(&message) {
@@ -163,7 +163,7 @@ async fn main() {
             Color::from_rgba(150, 160, 175, 200),
         );
         text.draw(
-            &format!("自己ベスト {high_score}"),
+            &best,
             16.0,
             60.0,
             22.0,
@@ -205,7 +205,7 @@ async fn main() {
             }
         }
         if game.over {
-            draw_game_over(&text, &game, since_over, high_score);
+            draw_game_over(&text, &game, since_over, &best);
         }
 
         next_frame().await
@@ -246,7 +246,15 @@ fn draw_offscreen_hazard(text: &Text, meters: f32) {
     text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
 }
 
-fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
+/// 自己ベストの表示。まだ無いとき（初めて遊ぶ前やデータを消した後）は「なし」と出し、0 点と見分ける。
+fn best_label(best: Option<u32>) -> String {
+    match best {
+        Some(best) => format!("自己ベスト {best}"),
+        None => "自己ベスト なし".to_owned(),
+    }
+}
+
+fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str) {
     draw_rectangle(
         0.0,
         0.0,
@@ -267,7 +275,7 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
     }
     text.draw_centered(
         &format!(
-            "スコア {}（{:.0} m・撃破 {}）   自己ベスト {high_score}",
+            "スコア {}（{:.0} m・撃破 {}）   {best}",
             game.score(),
             game.distance(),
             game.kills

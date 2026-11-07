@@ -11,7 +11,7 @@ macroquad = { version = "0.4", features = ["audio"] }
 # 同梱フォントに入っている文字を読む。macroquad が使う fontdue と同じ版にし、二重にビルドしない。
 ttf-parser = "0.25"
 # roommate の匿名 ID・スコア・自己ベスト。web/roommate-sdk.js は同じタグのものを置く。
-roommate-sdk = { git = "https://github.com/naosuke884/roommate", tag = "roommate-sdk-v0.3.0" }
+roommate-sdk = { git = "https://github.com/naosuke884/roommate", tag = "roommate-sdk-v0.4.1" }
 
 # 公開用 WASM は初回ロードを軽くするため、release はサイズ優先にする。
 # 開発中の `cargo run` は debug プロファイルなので、この設定の影響を受けない。

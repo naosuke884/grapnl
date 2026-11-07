@@ -25,7 +25,7 @@
     <style>
         :root {
             /* 上のヘッダーの高さ。キャンバスはその下の残りを埋める。 */
-            --header-height: 32px;
+            --header-height: 40px;
         }
 
         html,
@@ -50,22 +50,22 @@
             height: calc(100% - var(--header-height));
         }
 
-        /* サイトへ戻るリンクと名前、「名前を変える」「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
+        /* サイトへ戻るリンクと名前、「Change name」「Delete my data」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
         #header {
             position: fixed;
             inset: 0 0 auto 0;
             z-index: 2;
             box-sizing: border-box;
             height: var(--header-height);
-            padding: 0 12px;
+            padding: 0 12px 0 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            background: rgb(16, 18, 24);
-            border-bottom: 1px solid rgb(40, 44, 54);
+            background: rgb(14, 16, 21);
+            border-bottom: 1px solid rgb(36, 40, 50);
             color: rgb(150, 160, 175);
-            font: 12px/1 sans-serif;
+            font: 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
             white-space: nowrap;
             user-select: none;
             -webkit-user-select: none;
@@ -74,10 +74,16 @@
         #header-title {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 4px;
+            min-width: 0;
         }
 
         #header-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 10px;
+            border-radius: 6px;
             color: inherit;
             text-decoration: none;
         }
@@ -85,13 +91,16 @@
         #header-back:hover,
         #header-back:focus-visible {
             color: white;
-            text-decoration: underline;
+            background: rgba(255, 255, 255, 0.07);
         }
 
+        /* 戻るリンクとゲーム名の間に、細い縦の区切りを入れる。 */
         #header-name {
-            color: rgb(180, 190, 205);
-            font-weight: bold;
-            font-size: 13px;
+            padding-left: 12px;
+            border-left: 1px solid rgb(48, 53, 64);
+            color: white;
+            font-weight: 700;
+            letter-spacing: 0.03em;
         }
 
         #header-actions {
@@ -110,7 +119,37 @@
             color: rgb(255, 204, 90);
         }
 
-        #header button,
+        #header button {
+            font: inherit;
+            font-size: 12px;
+            padding: 6px 12px;
+            color: rgb(205, 211, 222);
+            background: rgb(25, 29, 37);
+            border: 1px solid rgb(56, 62, 76);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+        }
+
+        #header button:hover {
+            color: white;
+            background: rgb(36, 41, 52);
+            border-color: rgb(88, 96, 114);
+        }
+
+        /* 取り消せない操作なので、指したときだけ赤みで知らせる。 */
+        #header #delete-open:hover {
+            color: rgb(255, 160, 160);
+            border-color: rgb(150, 72, 82);
+            background: rgb(44, 26, 30);
+        }
+
+        #header button:focus-visible,
+        #header-back:focus-visible {
+            outline: 2px solid rgb(120, 180, 255);
+            outline-offset: 1px;
+        }
+
         #delete-dialog button {
             font: inherit;
             color: inherit;
@@ -118,10 +157,6 @@
             border: 1px solid currentColor;
             border-radius: 4px;
             cursor: pointer;
-        }
-
-        #header button {
-            padding: 3px 8px;
         }
 
         #delete-dialog {

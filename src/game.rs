@@ -60,6 +60,42 @@ pub enum Event {
     GameOver,
 }
 
+/// 終わった理由。同じ更新で複数が重なったときは、`EndReason::of` の順で 1 つに決める。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndReason {
+    /// 敵に触れた。
+    Enemy,
+    /// 左から迫ってくる領域に追いつかれた。
+    Hazard,
+    /// 下へ落ちた。
+    Fell,
+}
+
+impl EndReason {
+    /// 重なったときは「敵に触れた」「追いつかれた」「落ちた」の順で先のものにする。
+    /// 敵はその場で避けられたはずの理由なので最も先にし、落ちたのは最後にする。
+    fn of(hit: bool, caught: bool, fell: bool) -> Option<Self> {
+        if hit {
+            Some(Self::Enemy)
+        } else if caught {
+            Some(Self::Hazard)
+        } else if fell {
+            Some(Self::Fell)
+        } else {
+            None
+        }
+    }
+
+    /// ゲームオーバーの画面に出す言葉。
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Enemy => "敵に触れた",
+            Self::Hazard => "追いつかれた",
+            Self::Fell => "落ちた",
+        }
+    }
+}
+
 /// 1 回のプレイの状態。
 pub struct Game {
     pub level: Level,
@@ -83,6 +119,8 @@ pub struct Game {
     /// 迫ってくる領域の今の速さ。
     hazard_speed: f32,
     pub over: bool,
+    /// 終わった理由。終わるまでは `None`。`over` が true になるのと同時に入る。
+    pub end_reason: Option<EndReason>,
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
     pub elapsed: f32,
@@ -128,6 +166,7 @@ impl Game {
             hazard_x: start.x - HAZARD_START_GAP,
             hazard_speed: HAZARD_START_SPEED,
             over: false,
+            end_reason: None,
             seed,
             elapsed: 0.0,
             events: Vec::with_capacity(8),
@@ -212,8 +251,9 @@ impl Game {
         let fell = self.player.position.y - PLAYER_RADIUS > FALL_LIMIT_Y;
         let caught = self.player.position.x - PLAYER_RADIUS < self.hazard_x;
         let hit = self.enemies.any_touching(player, PLAYER_HURT_RADIUS);
-        if fell || hit || caught {
+        if let Some(reason) = EndReason::of(hit, caught, fell) {
             self.over = true;
+            self.end_reason = Some(reason);
             self.emit(Event::GameOver);
         }
         self.particles.update(dt);
@@ -590,6 +630,7 @@ mod tests {
         place_enemy(&mut game, 0.0);
         game.step(WireInput::default(), DT);
         assert!(game.over);
+        assert_eq!(game.end_reason, Some(EndReason::Enemy));
     }
 
     #[test]
@@ -610,6 +651,7 @@ mod tests {
         game.hazard_x = game.player.position.x;
         game.step(WireInput::default(), DT);
         assert!(game.over);
+        assert_eq!(game.end_reason, Some(EndReason::Hazard));
     }
 
     #[test]
@@ -633,6 +675,32 @@ mod tests {
         }
         assert!(game.over);
         assert!(game.player.position.y > FALL_LIMIT_Y);
+        assert_eq!(game.end_reason, Some(EndReason::Fell));
+    }
+
+    #[test]
+    fn not_over_has_no_end_reason() {
+        let mut game = Game::with_seed(1);
+        game.step(WireInput::default(), DT);
+        assert!(!game.over);
+        assert_eq!(game.end_reason, None);
+    }
+
+    /// 同じ更新で敵に触れ、追いつかれ、落ちたときは、敵に触れたことにする。
+    #[test]
+    fn overlapping_reasons_pick_the_enemy_first() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        game.player.position = vec2(game.player.position.x, FALL_LIMIT_Y + PLAYER_RADIUS * 2.0);
+        game.player.velocity = Vec2::ZERO;
+        game.hazard_x = game.player.position.x + 1000.0;
+        place_enemy(&mut game, 0.0);
+        game.step(WireInput::default(), DT);
+        assert_eq!(game.end_reason, Some(EndReason::Enemy));
+
+        assert_eq!(EndReason::of(false, true, true), Some(EndReason::Hazard));
+        assert_eq!(EndReason::of(false, false, true), Some(EndReason::Fell));
+        assert_eq!(EndReason::of(false, false, false), None);
     }
 
     #[test]

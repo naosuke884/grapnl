@@ -1,5 +1,5 @@
 //! 背景。遠くの夜の街を何層か重ね、遠い層ほどゆっくり流して奥行きを出す。
-//! 空の色は進んだ距離で、夕焼け → 夜 → 夜明け → 夕焼け…と移り、どこまで来たかが目で分かる。
+//! 空はなめらかなグラデーションで、色は進んだ距離で、夕焼け → 夜 → 夜明け → 夕焼け…と移り、どこまで来たかが目で分かる。
 //! 見た目だけで判定には関わらない。地形や敵より暗く、彩度も低くして、遊ぶときの邪魔をしない。
 //! ビルの形と窓の明かりはコースの種で決め、同じ日は誰が遊んでも同じ街になる。
 
@@ -9,8 +9,6 @@ use crate::game::VIEW_HEIGHT;
 
 /// 背景のドット 1 つのワールドでの大きさ。自機や敵（4）より粗くし、遠くに見せる。
 const DOT: f32 = 8.0;
-/// 空を塗り分ける帯の数。なめらかにせず段を残して、ドット絵らしくする。
-const SKY_BANDS: usize = 18;
 /// 空の色が一巡する距離（m）。
 const CYCLE: f32 = 4000.0;
 
@@ -183,21 +181,21 @@ pub fn draw(seed: u64, view: Rect, meters: f32, time: f32) {
 }
 
 fn draw_sky(palette: &Palette, view: Rect) {
-    let band = VIEW_HEIGHT / SKY_BANDS as f32;
-    for i in 0..SKY_BANDS {
-        let color = mix(
-            palette.sky_top,
-            palette.sky_bottom,
-            i as f32 / (SKY_BANDS - 1) as f32,
-        );
-        let top = if i == 0 { view.y } else { i as f32 * band };
-        let bottom = if i + 1 == SKY_BANDS {
-            view.bottom()
-        } else {
-            (i + 1) as f32 * band
-        };
-        draw_rectangle(view.x, top, view.w, bottom - top, color);
-    }
+    // 上端と下端の色を頂点に持たせ、間をなめらかにつなぐ。
+    let top = palette.sky_top;
+    let bottom = palette.sky_bottom;
+    let vertex = |x: f32, y: f32, color: Color| Vertex::new(x, y, 0.0, 0.0, 0.0, color);
+    let mesh = Mesh {
+        vertices: vec![
+            vertex(view.x, view.y, top),
+            vertex(view.right(), view.y, top),
+            vertex(view.right(), view.bottom(), bottom),
+            vertex(view.x, view.bottom(), bottom),
+        ],
+        indices: vec![0, 1, 2, 0, 2, 3],
+        texture: None,
+    };
+    draw_mesh(&mesh);
 }
 
 /// 星。空の上の方にだけ、ほとんど動かずに散らばる。

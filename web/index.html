@@ -20,6 +20,52 @@
             user-select: none;
             -webkit-user-select: none;
         }
+
+        /* WASM の取得とコンパイルが終わるまでキャンバスは真っ黒。
+           その間は、読み込み中だと分かる文字を出す。 */
+        #loading {
+            position: fixed;
+            inset: 0;
+            z-index: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: black;
+            color: rgb(180, 190, 205);
+            font-family: sans-serif;
+            font-size: 28px;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
+        }
+
+        #loading-dots span {
+            opacity: 0;
+            animation: loading-dot 1.2s infinite;
+        }
+
+        #loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        #loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes loading-dot {
+            0%,
+            20% { opacity: 0; }
+            50%,
+            100% { opacity: 1; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #loading-dots span {
+                opacity: 1;
+                animation: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -27,6 +73,7 @@
          ローダーは window.onresize で clientWidth / clientHeight を読み、
          描画バッファをブラウザの表示サイズに合わせる。 -->
     <canvas id="glcanvas" tabindex="1" oncontextmenu="event.preventDefault()"></canvas>
+    <p id="loading" role="status">読み込み中<span id="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>
     <!-- wasm-bindgen ではなく macroquad 専用ローダー。
          出典: macroquad 0.4.16 の js/mq_js_bundle.js
          https://github.com/not-fl3/macroquad/blob/master/js/mq_js_bundle.js -->
@@ -81,6 +128,33 @@
         document.addEventListener("contextmenu", function (event) {
             event.preventDefault();
         });
+
+        // ゲームの最初のフレームは gl.clear で画面を塗り始める。
+        // clear の時点ではそのフレームの残りをまだ描いているので、
+        // 描き終わってから、画面に出る前に読み込み表示を消す。
+        (function () {
+            var canvas = document.getElementById("glcanvas");
+            var loading = document.getElementById("loading");
+            if (!canvas || !loading) return;
+            var proto = HTMLCanvasElement.prototype;
+            var getContext = proto.getContext;
+            proto.getContext = function (type) {
+                var gl = getContext.apply(this, arguments);
+                if (this !== canvas || !gl) return gl;
+                if (type !== "webgl" && type !== "webgl2" && type !== "experimental-webgl") return gl;
+                proto.getContext = getContext;
+                var clear = gl.clear;
+                gl.clear = function (mask) {
+                    gl.clear = clear;
+                    clear.call(gl, mask);
+                    queueMicrotask(function () {
+                        if (loading.parentNode) loading.remove();
+                    });
+                };
+                return gl;
+            };
+        })();
+
         load("grapnl.wasm");
     </script>
 </body>

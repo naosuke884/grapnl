@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::sprites::{draw_dot_line, draw_hook, draw_sprite, hook_tail, Sprites};
+use crate::sprites::{draw_dot_hook, draw_dot_line, draw_sprite, hook_tail, Sprites};
 
 use crate::level::Level;
 
@@ -301,36 +301,46 @@ impl Player {
         Some(self.position + dir * MAX_WIRE_LENGTH)
     }
 
-    /// `hook_normal` は刺さっている面の外向き。フックの向きに使う。
-    pub fn draw(&self, sprites: &Sprites, hook_normal: Vec2) {
+    /// ワイヤーとフックを描く。地形より先に描き、フックの爪の地形に食い込んだ部分を地形で隠す。
+    /// `hook_normal` は刺さっている面の外向き。フックは面に垂直に刺さったまま動かない。
+    pub fn draw_wire(&self, hook_normal: Vec2) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
-            // ワイヤーは刺さった点ではなく、フックの柄の端からつなぐ。フックはワイヤーの上に描く。
             let tail = hook_tail(anchor.point, hook_normal);
             if self.rope.len() == ROPE_POINTS {
-                for (i, pair) in self.rope.windows(2).enumerate() {
-                    let start = if i == 0 { tail } else { pair[0] };
-                    draw_dot_line(start, pair[1], wire_color, i == 0);
+                // フックの中にある節は飛ばし、輪から先の節だけを結ぶ。フックの上をワイヤーが横切らない。
+                let reach = tail.distance(anchor.point);
+                let mut start = tail;
+                for &node in &self.rope[1..] {
+                    if node.distance(anchor.point) > reach {
+                        draw_dot_line(start, node, wire_color, false);
+                        start = node;
+                    }
                 }
             } else {
-                draw_dot_line(tail, self.position, wire_color, true);
+                draw_dot_line(tail, self.position, wire_color, false);
             }
-            draw_hook(&sprites.hook, anchor.point, hook_normal);
+            draw_dot_hook(anchor.point, hook_normal);
         }
         if let Some((from, left)) = self.retract {
-            // 戻り始めた位置から手元へ縮んでいくように描く。
+            // 戻り始めた位置から手元へ縮んでいくように描く。先にはフックを付けたまま戻す。
             let t = (left / RETRACT_TIME).clamp(0.0, 1.0);
             let tip = self.position + (from - self.position) * t;
+            let tail = hook_tail(tip, self.position - tip);
             draw_dot_line(
+                tail,
                 self.position,
-                tip,
                 Color {
                     a: 0.7,
                     ..wire_color
                 },
-                true,
+                false,
             );
+            draw_dot_hook(tip, self.position - tip);
         }
+    }
+
+    pub fn draw(&self, sprites: &Sprites) {
         draw_sprite(&sprites.player, self.position, WHITE);
     }
 }

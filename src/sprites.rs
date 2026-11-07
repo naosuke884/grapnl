@@ -118,16 +118,6 @@ const OUT_OF_REACH: &[&str] = &[
     "XX...XX", //
     ".XX.XX.", "..XXX..", "...X...", "..XXX..", ".XX.XX.", "XX...XX",
 ];
-/// ワイヤーの先のフック。上を向いた爪を地形に食い込ませた形。7×7 で、一番上の行が刺さった面に来る。
-/// 刺さった面の向きに合わせて 90 度ずつ回して描く。
-const HOOK: &[&str] = &[
-    "L.....L", //
-    "L.....L", "DL...LD", ".DL.LD.", "..DLD..", "...L...", "...D...",
-];
-const HOOK_PALETTE: &[(char, Color)] = &[
-    ('L', Color::new(0.86, 0.88, 0.92, 1.0)),
-    ('D', Color::new(0.48, 0.52, 0.60, 1.0)),
-];
 const MARK_PALETTE: &[(char, Color)] = &[('X', WHITE)];
 
 pub struct Sprites {
@@ -140,7 +130,6 @@ pub struct Sprites {
     tile: Texture2D,
     pub aim: Texture2D,
     pub out_of_reach: Texture2D,
-    pub hook: Texture2D,
 }
 
 impl Sprites {
@@ -154,7 +143,6 @@ impl Sprites {
             tile: texture(&image(TILE, TILE_PALETTE)),
             aim: texture(&image(AIM, MARK_PALETTE)),
             out_of_reach: texture(&image(OUT_OF_REACH, MARK_PALETTE)),
-            hook: texture(&image(HOOK, HOOK_PALETTE)),
         }
     }
 
@@ -294,33 +282,93 @@ pub fn draw_dot_square(center: Vec2, size: f32, color: Color) {
     draw_rectangle(x, y, side, side, color);
 }
 
-/// フックの柄の端（ワイヤーをつなぐ所）のドットの中心。`point` は刺さった点、`normal` は面の外向き。
-/// フックはこのドットを基準に格子に揃えて描くので、ワイヤーの線とドットがずれずにつながる。
-pub fn hook_tail(point: Vec2, normal: Vec2) -> Vec2 {
-    let rows = HOOK.len() as f32;
-    let tail = point + normal * ((rows - 0.5) * SPRITE_DOT);
-    ((tail / SPRITE_DOT).floor() + 0.5) * SPRITE_DOT
+/// フックの銀色と、爪の先の暗い色。
+const HOOK_COLOR: Color = Color::new(0.86, 0.88, 0.92, 1.0);
+const HOOK_TIP_COLOR: Color = Color::new(0.50, 0.54, 0.62, 1.0);
+/// フックの形。上の地形に刺さったときの、刺さった点のマスから数えたドットの位置。
+/// 横は右が正、縦は下（地形の外）が正。3 本の爪の先は地形に 1 ドット食い込み（地形に隠れる）、
+/// 柄の端の輪にワイヤーを結ぶ。フックは地形に刺さって動かず、ワイヤーは輪を中心に振れる。
+///
+/// ```text
+/// +..+..+  -1   + は爪の先。地形の中
+/// #..#..#   0   地形の面
+/// #..#..#   1
+/// .#.#.#.   2
+/// ..###..   3
+/// ...#...   4
+/// ..#.#..   5   輪
+/// ...#...   6   輪の下。ここからワイヤーをつなぐ
+/// ```
+const HOOK_LINES: [((i32, i32), (i32, i32)); 3] =
+    [((0, -1), (0, 4)), ((-3, -1), (-3, 1)), ((3, -1), (3, 1))];
+const HOOK_DIAGONALS: [((i32, i32), (i32, i32)); 2] = [((-3, 1), (-1, 3)), ((3, 1), (1, 3))];
+const HOOK_RING: [(i32, i32); 3] = [(-1, 5), (1, 5), (0, 6)];
+const HOOK_TIPS: [(i32, i32); 3] = [(-3, -1), (0, -1), (3, -1)];
+const HOOK_TAIL: (i32, i32) = (0, 6);
+
+/// 向きを上下左右の 4 方向に丸めた整数の向き。斜めはドットの形が崩れるので使わない。
+fn direction4(toward: Vec2) -> IVec2 {
+    if toward.x.abs() > toward.y.abs() {
+        ivec2(toward.x.signum() as i32, 0)
+    } else if toward.y < 0.0 {
+        ivec2(0, -1)
+    } else {
+        ivec2(0, 1)
+    }
 }
 
-/// フックを、爪の先が `point` に来るように描く。`normal` は刺さった面から外へ向く向き（上下左右のどれか）。
-pub fn draw_hook(texture: &Texture2D, point: Vec2, normal: Vec2) {
-    let size = vec2(texture.width(), texture.height()) * SPRITE_DOT;
-    // 絵は爪が上（面の外向きが下）。外向きが下なら回さず、そこから向きに合わせて回す。
-    let rotation = normal.y.atan2(normal.x) - std::f32::consts::FRAC_PI_2;
-    // 柄の端のドットから、絵の中心（縦 7 ドットの真ん中）まで面の側へ戻る。
-    let center =
-        hook_tail(point, normal) - normal * ((size.y / SPRITE_DOT - 1.0) / 2.0 * SPRITE_DOT);
-    draw_texture_ex(
-        texture,
-        center.x - size.x / 2.0,
-        center.y - size.y / 2.0,
-        WHITE,
-        DrawTextureParams {
-            dest_size: Some(size),
-            rotation,
-            ..Default::default()
-        },
+/// ドットの格子の番号。
+type Cell = (i32, i32);
+
+/// フックを形作るドットの格子の番号と色。`tail` は柄の端のマス。
+fn hook_cells(point: Vec2, toward: Vec2) -> (Vec<(Cell, Color)>, Cell) {
+    let u = direction4(toward);
+    // 形の横（右が正）は、ワイヤーの向きを時計回りに 90 度回した向き。下へ引くとき右を向く。
+    let side = ivec2(-u.y, u.x);
+    let origin = ivec2(
+        (point.x / SPRITE_DOT).floor() as i32,
+        (point.y / SPRITE_DOT).floor() as i32,
     );
+    let place = |(x, y): (i32, i32)| {
+        let cell = origin + side * x + u * y;
+        (cell.x, cell.y)
+    };
+    let center = |(x, y): (i32, i32)| vec2(x as f32 + 0.5, y as f32 + 0.5) * SPRITE_DOT;
+    let mut cells = Vec::new();
+    for (a, b) in HOOK_LINES.iter().chain(&HOOK_DIAGONALS) {
+        for cell in dot_line(center(place(*a)), center(place(*b))) {
+            cells.push((cell, HOOK_COLOR));
+        }
+    }
+    for ring in HOOK_RING {
+        cells.push((place(ring), HOOK_COLOR));
+    }
+    for tip in HOOK_TIPS {
+        cells.push((place(tip), HOOK_TIP_COLOR));
+    }
+    (cells, place(HOOK_TAIL))
+}
+
+/// ワイヤーの先のフックを、ワイヤーと同じくドットの格子の上に描く。
+/// `point` は刺さった点、`toward` は柄の向き。刺さっている間は面の外向き（上下左右）、
+/// 戻っている間は自機への向きを渡す。上下左右に丸めて描く。ワイヤーは `hook_tail` からつなぎ、フックはその上に描く。
+/// 地形より先に描けば、地形に食い込んだ爪の先は地形に隠れる。
+pub fn draw_dot_hook(point: Vec2, toward: Vec2) {
+    for ((x, y), color) in hook_cells(point, toward).0 {
+        draw_rectangle(
+            x as f32 * SPRITE_DOT,
+            y as f32 * SPRITE_DOT,
+            SPRITE_DOT,
+            SPRITE_DOT,
+            color,
+        );
+    }
+}
+
+/// `draw_dot_hook` と同じ置き方をしたフックの、ワイヤーをつなぐ輪の下のマスの中心。
+pub fn hook_tail(point: Vec2, toward: Vec2) -> Vec2 {
+    let tail = hook_cells(point, toward).1;
+    vec2(tail.0 as f32 + 0.5, tail.1 as f32 + 0.5) * SPRITE_DOT
 }
 
 fn texture(image: &Image) -> Texture2D {
@@ -362,10 +410,9 @@ mod tests {
     use super::*;
 
     type Palette = &'static [(char, Color)];
-    const ALL: [(&str, &[&str], Palette); 8] = [
+    const ALL: [(&str, &[&str], Palette); 7] = [
         ("AIM", AIM, MARK_PALETTE),
         ("OUT_OF_REACH", OUT_OF_REACH, MARK_PALETTE),
-        ("HOOK", HOOK, HOOK_PALETTE),
         ("PLAYER", PLAYER, PLAYER_PALETTE),
         ("FLOATER", FLOATER, ENEMY_PALETTE),
         ("BOBBER", BOBBER, ENEMY_PALETTE),
@@ -410,6 +457,37 @@ mod tests {
                 assert!(dx.abs() <= 1 && dy.abs() <= 1 && (dx, dy) != (0, 0));
             }
         }
+    }
+
+    /// フックの形を文字で確かめる。`cargo test hook_shapes -- --nocapture` で見られる。
+    #[test]
+    fn hook_shapes() {
+        for (name, toward) in [
+            ("天井に刺さる", vec2(0.0, 1.0)),
+            ("斜め下へ戻る", vec2(1.0, 1.2)),
+            ("右の面に刺さる", vec2(1.0, 0.0)),
+        ] {
+            let point = vec2(10.5, 10.5) * SPRITE_DOT;
+            let mut grid = [['.'; 21]; 21];
+            let (cells, tail) = hook_cells(point, toward);
+            for ((x, y), color) in cells {
+                grid[y as usize][x as usize] = if color == HOOK_TIP_COLOR { '+' } else { '#' };
+            }
+            grid[tail.1 as usize][tail.0 as usize] = 'T';
+            println!("{name}");
+            for row in grid {
+                println!("{}", row.iter().collect::<String>());
+            }
+        }
+    }
+
+    #[test]
+    fn hook_points_its_shaft_along_the_wire() {
+        let point = vec2(10.5, 10.5) * SPRITE_DOT;
+        assert_eq!(hook_cells(point, vec2(0.0, 1.0)).1, (10, 16));
+        assert_eq!(hook_cells(point, vec2(0.1, -1.0)).1, (10, 4));
+        assert_eq!(hook_cells(point, vec2(-1.0, 0.0)).1, (4, 10));
+        assert_eq!(hook_cells(point, vec2(1.0, 0.9)).1, (16, 10));
     }
 
     #[test]

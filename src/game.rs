@@ -133,8 +133,14 @@ impl Game {
         self.level.remove_before(front - KEEP_BEHIND);
 
         self.aim = input.aim;
+        // 戻る途中のクリックは、戻り切ったフレームのクリックとして扱う。
+        // 向きは押したときではなく、このフレームのカーソル。
+        if self.player.resolve_wire(input.pressed, dt) {
+            input.pressed = true;
+        }
         // 撃ったワイヤーが地形より手前の敵に当たったら、その敵を倒し、引き寄せられながら上へ跳ねる。
         // 天井やブロックに刺すか、何もない所へ撃つと連鎖が切れる。ワイヤーを戻すだけなら切れない。
+        // 敵の判定は、ワイヤーが手元にあって撃つフレームだけ行う。
         if input.pressed && self.player.can_shoot() {
             if let Some((index, point)) = self.enemy_target(input.aim) {
                 self.enemies.list.swap_remove(index);
@@ -151,7 +157,7 @@ impl Game {
         // この更新で「刺さっていなかった」から「刺さった」へ変わったときだけ火花を出す。
         // 最初から刺さっている状態や、手元へ戻すだけのクリックでは出さない。
         let was_anchored = self.player.anchor.is_some();
-        self.player.update(input, &self.level, dt);
+        self.player.finish_update(input, &self.level, dt);
         if let (false, Some(anchor)) = (was_anchored, self.player.anchor) {
             let normal = (self.player.position - anchor.point).normalize_or_zero();
             self.emit(Impact::WireStuck {
@@ -333,6 +339,91 @@ mod tests {
         assert!(game.player.velocity.x > 600.0);
         // 横の敵を倒しても、上へ大きく跳ねる。
         assert!(game.player.velocity.y < -600.0);
+    }
+
+    #[test]
+    fn click_while_the_wire_returns_kills_the_enemy_aimed_at_when_it_fires() {
+        let mut game = Game::with_seed(1);
+        start_retract(&mut game);
+        place_enemy(&mut game, 80.0);
+        // 敵と反対の向きでクリックしても、その場では倒さない。
+        shoot(&mut game, vec2(-1.0, 0.0));
+        assert_eq!(game.kills, 0);
+        assert!(!game.player.can_shoot());
+
+        let mut killed = false;
+        for _ in 0..40 {
+            if game.enemies.list.is_empty() {
+                break;
+            }
+            let origin = game.player.position;
+            game.enemies.list[0].position = origin + vec2(80.0, 0.0);
+            let before = game.kills;
+            game.step(
+                WireInput {
+                    aim: origin + vec2(80.0, 0.0),
+                    ..Default::default()
+                },
+                DT,
+            );
+            if game.kills > before {
+                killed = true;
+                break;
+            }
+        }
+        assert!(killed);
+        assert_eq!(game.chain, 1);
+        assert!(game.player.anchor.is_none());
+        assert!(game.player.velocity.y < -600.0);
+    }
+
+    #[test]
+    fn buffered_click_does_not_keep_the_aim_from_when_it_was_pressed() {
+        let mut game = Game::with_seed(1);
+        start_retract(&mut game);
+        place_enemy(&mut game, 80.0);
+        // 戻る途中は敵を狙ってクリックしても、その瞬間には当たらない。
+        let enemy = game.enemies.list[0].position;
+        game.step(
+            WireInput {
+                aim: enemy,
+                pressed: true,
+                ..Default::default()
+            },
+            DT,
+        );
+        assert_eq!(game.kills, 0);
+
+        game.enemies.list[0].position = vec2(-10_000.0, 10_000.0);
+        let mut attached = false;
+        for _ in 0..40 {
+            let aim = game.player.position + vec2(0.0, -1.0);
+            game.step(
+                WireInput {
+                    aim,
+                    ..Default::default()
+                },
+                DT,
+            );
+            if game.player.anchor.is_some() {
+                attached = true;
+                break;
+            }
+        }
+        assert!(attached);
+        assert_eq!(game.player.anchor.unwrap().point.y, 120.0);
+        assert_eq!(game.kills, 0);
+    }
+
+    /// 刺さっているワイヤーを戻し始める。戻っている途中で返す。
+    fn start_retract(game: &mut Game) {
+        if game.player.anchor.is_none() {
+            shoot(game, vec2(0.0, -1.0));
+        }
+        assert!(game.player.anchor.is_some());
+        shoot(game, vec2(0.0, -1.0));
+        assert!(!game.player.can_shoot());
+        assert_eq!(game.kills, 0);
     }
 
     /// 自機の右 `dx` に浮遊する敵を 1 体置く。

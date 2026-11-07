@@ -39,6 +39,8 @@ const HAZARD_START_GAP: f32 = 900.0;
 const HAZARD_START_SPEED: f32 = 120.0;
 const HAZARD_ACCELERATION: f32 = 3.0;
 const HAZARD_MAX_SPEED: f32 = 450.0;
+/// 届かない向きに出す × の半分の大きさ（ワールドの単位）。刺さる照準の円と見分けが付く大きさにする。
+const OUT_OF_REACH_MARK: f32 = 14.0;
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
@@ -341,6 +343,12 @@ impl Game {
                     2.0,
                     Color::from_rgba(255, 200, 80, 180),
                 );
+            } else if let Some(end) = self.player.reach_end(self.aim) {
+                // 届かない向きでは、ワイヤーが伸び切る所に薄い × を出し、そこまでしか届かないと分かるようにする。
+                let color = Color::from_rgba(150, 160, 175, 140);
+                let d = OUT_OF_REACH_MARK;
+                draw_line(end.x - d, end.y - d, end.x + d, end.y + d, 3.0, color);
+                draw_line(end.x - d, end.y + d, end.x + d, end.y - d, 3.0, color);
             }
         }
         self.player.draw();

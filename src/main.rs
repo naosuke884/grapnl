@@ -473,7 +473,7 @@ fn draw_menu(fonts: &Fonts, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
         let first = menu[0].1;
         let second = menu[1].1;
         text.draw_centered(
-            "Your data was deleted. Scores won't be saved until you reload.",
+            "Data deleted. Please reload the page.",
             (first.x + second.right()) / 2.0,
             first.center().y + 6.0,
             text::SMALL,

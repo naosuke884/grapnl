@@ -153,25 +153,18 @@
         <!-- 消している間と結果は、見出しを書き換えて伝える。 -->
         <h2 id="delete-title" aria-live="polite">Delete your data?</h2>
         <div data-for="confirm">
-            <p>This deletes the anonymous ID on this device and every score you have sent.</p>
-            <p>The ID is shared by all roommate games, so your scores in other games are deleted too.</p>
-            <p>Your best scores and ranks go too. This can't be undone.</p>
-            <p>After deleting, scores won't be saved until you reload the page.</p>
+            <p>Your anonymous ID and all your scores in every roommate game will be deleted. This can't be undone.</p>
         </div>
         <div data-for="done">
-            <p>Your scores, including those in other games, and your anonymous ID were deleted.</p>
-            <p>Your best scores and ranks are gone.</p>
-            <p>Scores won't be saved until you reload the page.</p>
+            <p>Reloading...</p>
         </div>
         <div data-for="failed">
-            <p>Your data is still there.</p>
             <p>Check your connection and try again.</p>
         </div>
         <form method="dialog">
             <!-- 取り消せない操作なので、最初は「やめる」にフォーカスを置く。 -->
             <button type="button" class="danger" data-for="confirm failed" data-action="delete"></button>
             <button value="close" data-for="confirm failed" data-autofocus>Cancel</button>
-            <button value="close" data-for="done">Close</button>
         </form>
     </dialog>
     <p id="loading" role="status">Loading<span id="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>
@@ -307,9 +300,16 @@
             }
 
             function showDone() {
-                // 消した後は一時停止の画面が page_data_deleted を見て、名前と消すボタンを隠し、そのことを知らせる。
-                // 消した ID のまま影の部屋に残らないよう、WebSocket を閉じ、開き直すまで繋がない。
+                // 消した ID のまま影の部屋に残らないよう、WebSocket を閉じる。
                 if (window.grapnlRealtime) window.grapnlRealtime.stop();
+            }
+
+            // 消し終えたら、消したことを少し見せてからページを開き直す。開き直すと新しい匿名 ID で始まり、
+            // スコアもまた記録される。開き直せなかったときは、一時停止の画面が page_data_deleted を見て知らせる。
+            function reloadSoon() {
+                setTimeout(function () {
+                    window.location.reload();
+                }, 1200);
             }
 
             window.grapnlOpenDeleteDialog = function () {
@@ -325,6 +325,7 @@
                     var state = client.deleteState() === "done" ? "done" : "failed";
                     if (state === "done") showDone();
                     if (dialog.open) show(state);
+                    if (state === "done") reloadSoon();
                 });
             });
 

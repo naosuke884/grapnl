@@ -231,7 +231,7 @@ impl Panel {
             "← → で音量   M で消す・出す",
             frame.center().x,
             frame.bottom() + 28.0,
-            20.0,
+            22.0,
             Color::from_rgba(150, 160, 175, 255),
         );
     }

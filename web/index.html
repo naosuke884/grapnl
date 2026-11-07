@@ -6,6 +6,11 @@
     <title>grapnl</title>
     <link rel="icon" href="data:,">
     <style>
+        :root {
+            /* 上のヘッダーの高さ。キャンバスはその下の残りを埋める。 */
+            --header-height: 32px;
+        }
+
         html,
         body,
         canvas {
@@ -19,6 +24,120 @@
             z-index: 0;
             user-select: none;
             -webkit-user-select: none;
+        }
+
+        /* ローダーはキャンバスの clientWidth / clientHeight で描画バッファを合わせ、
+           マウスの位置は getBoundingClientRect から測るので、ヘッダーの分を下げても座標はずれない。 */
+        canvas {
+            top: var(--header-height);
+            height: calc(100% - var(--header-height));
+        }
+
+        /* 名前と「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
+        #header {
+            position: fixed;
+            inset: 0 0 auto 0;
+            z-index: 2;
+            box-sizing: border-box;
+            height: var(--header-height);
+            padding: 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: rgb(16, 18, 24);
+            border-bottom: 1px solid rgb(40, 44, 54);
+            color: rgb(150, 160, 175);
+            font: 12px/1 sans-serif;
+            white-space: nowrap;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #header-name {
+            color: rgb(180, 190, 205);
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        #header-note {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: rgb(255, 204, 90);
+        }
+
+        #header button,
+        #delete-dialog button {
+            font: inherit;
+            color: inherit;
+            background: transparent;
+            border: 1px solid currentColor;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #header button {
+            padding: 3px 8px;
+        }
+
+        #delete-dialog {
+            box-sizing: border-box;
+            width: min(28rem, calc(100vw - 32px));
+            max-height: calc(100dvh - 32px);
+            overflow-y: auto;
+            padding: 20px;
+            background: rgb(24, 27, 34);
+            color: rgb(190, 198, 210);
+            border: 1px solid rgb(60, 66, 80);
+            border-radius: 8px;
+            font: 14px/1.6 sans-serif;
+        }
+
+        #delete-dialog:modal {
+            overscroll-behavior: contain;
+        }
+
+        #delete-dialog::backdrop {
+            background: rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            overscroll-behavior: contain;
+        }
+
+        #delete-title {
+            margin: 0 0 12px;
+            font-size: 18px;
+            color: white;
+        }
+
+        #delete-dialog[data-state="failed"] #delete-title {
+            color: rgb(255, 140, 128);
+        }
+
+        #delete-dialog p {
+            margin: 0 0 6px;
+        }
+
+        #delete-dialog form {
+            margin: 16px 0 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        #delete-dialog button {
+            padding: 6px 16px;
+            font-size: 15px;
+        }
+
+        #delete-dialog .danger {
+            color: rgb(255, 140, 128);
+        }
+
+        #delete-dialog button:hover,
+        #header button:hover {
+            background: rgba(255, 255, 255, 0.08);
         }
 
         /* WASM の取得とコンパイルが終わるまでキャンバスは真っ黒。
@@ -73,6 +192,38 @@
          ローダーは window.onresize で clientWidth / clientHeight を読み、
          描画バッファをブラウザの表示サイズに合わせる。 -->
     <canvas id="glcanvas" tabindex="1" oncontextmenu="event.preventDefault()"></canvas>
+    <!-- ゲームの外に置く細いヘッダー。自分のデータ（匿名 ID と roommate の全ゲームのスコア）を消せる。 -->
+    <header id="header">
+        <span id="header-name">grapnl</span>
+        <button type="button" id="delete-open">データを消す</button>
+        <span id="header-note" hidden>ページを開き直すまでスコアは記録されません</span>
+    </header>
+    <!-- 確認・消している間・結果を、data-state で出し分ける。 -->
+    <dialog id="delete-dialog" aria-labelledby="delete-title" data-state="confirm">
+        <!-- 消している間と結果は、見出しを書き換えて伝える。 -->
+        <h2 id="delete-title" aria-live="polite">データを消しますか</h2>
+        <div data-for="confirm">
+            <p>この端末の匿名 ID と、送ったスコアをすべて消します。</p>
+            <p>ID は roommate のゲームで共通なので、ほかのゲームのスコアも消えます。</p>
+            <p>自己ベストと順位も消え、元には戻せません。</p>
+            <p>消した後は、ページを開き直すまで遊んでもスコアは記録されません。</p>
+        </div>
+        <div data-for="done">
+            <p>ほかのゲームの分も含め、スコアと匿名 ID を消しました。</p>
+            <p>自己ベストと順位も消えました。</p>
+            <p>ページを開き直すまで、遊んでもスコアは記録されません。</p>
+        </div>
+        <div data-for="failed">
+            <p>データは残っています。</p>
+            <p>通信できるか確かめて、もう一度試してください。</p>
+        </div>
+        <form method="dialog">
+            <!-- 取り消せない操作なので、最初は「やめる」にフォーカスを置く。 -->
+            <button type="button" class="danger" data-for="confirm failed" data-action="delete"></button>
+            <button value="close" data-for="confirm failed" data-autofocus>やめる</button>
+            <button value="close" data-for="done">閉じる</button>
+        </form>
+    </dialog>
     <p id="loading" role="status">読み込み中<span id="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>
     <!-- wasm-bindgen ではなく macroquad 専用ローダー。
          出典: macroquad 0.4.16 の js/mq_js_bundle.js
@@ -127,6 +278,7 @@
         // タブが裏にある間はフレームが回らないので、戻ってきた最初のフレームで読めるよう、起きたことを残しておく。
         (function () {
             var lost = false;
+            var deleteDialog = document.getElementById("delete-dialog");
             document.addEventListener("visibilitychange", function () {
                 if (document.hidden) lost = true;
             });
@@ -135,12 +287,75 @@
             });
             function register_plugin(importObject) {
                 importObject.env.page_lost_focus = function () {
-                    var result = lost || document.hidden;
+                    // データを消すダイアログを開いている間も止めておく。
+                    var result = lost || document.hidden || (deleteDialog && deleteDialog.open);
                     lost = false;
                     return result ? 1 : 0;
                 };
             }
             miniquad_add_plugin({ register_plugin: register_plugin, name: "grapnl_page", version: 1 });
+        })();
+
+        // ヘッダーの「データを消す」。確認してから roommate-sdk で消し、結果を出す。
+        // ダイアログはモーダルなので、開いている間はキャンバスにクリックもキーも届かない。
+        // ゲームは上の page_lost_focus で一時停止し、閉じた後に Esc かクリックで再開する。
+        (function () {
+            var client = window.roommate && window.roommate.client;
+            var canvas = document.getElementById("glcanvas");
+            var openButton = document.getElementById("delete-open");
+            var note = document.getElementById("header-note");
+            var dialog = document.getElementById("delete-dialog");
+            var title = document.getElementById("delete-title");
+            if (!client || !openButton || !dialog) {
+                if (openButton) openButton.hidden = true;
+                return;
+            }
+            var TITLES = {
+                confirm: "データを消しますか",
+                deleting: "消しています",
+                done: "データを消しました",
+                failed: "消せませんでした",
+            };
+
+            function show(state) {
+                dialog.dataset.state = state;
+                title.textContent = TITLES[state];
+                var parts = dialog.querySelectorAll("[data-for]");
+                for (var i = 0; i < parts.length; i++) {
+                    parts[i].hidden = parts[i].dataset.for.split(" ").indexOf(state) < 0;
+                }
+                var deleteButton = dialog.querySelector('[data-action="delete"]');
+                deleteButton.textContent = state === "failed" ? "もう一度" : "消す";
+            }
+
+            function showDone() {
+                openButton.hidden = true;
+                note.hidden = false;
+            }
+
+            openButton.addEventListener("click", function () {
+                show("confirm");
+                dialog.showModal();
+                dialog.querySelector("[data-autofocus]").focus();
+            });
+
+            dialog.querySelector('[data-action="delete"]').addEventListener("click", function () {
+                show("deleting");
+                client.requestDelete().then(function () {
+                    var state = client.deleteState() === "done" ? "done" : "failed";
+                    if (state === "done") showDone();
+                    // 消している間に Esc で閉じていても、ヘッダーは上で直っている。
+                    if (dialog.open) show(state);
+                });
+            });
+
+            // 消している間に閉じても、消すのは続き、結果はヘッダーに出る。
+            dialog.addEventListener("close", function () {
+                // 閉じた後のキー入力がゲームに届くよう、フォーカスをキャンバスへ戻す。
+                canvas.focus();
+            });
+
+            if (client.deleteState() === "done") showDone();
         })();
 
         // 右クリックのブラウザメニューを出さない。

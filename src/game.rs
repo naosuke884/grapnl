@@ -361,7 +361,7 @@ impl Game {
 
 /// コース生成の版。地形か敵の作り方を変えたら上げる。
 /// 影の部屋はこの版ごとに分かれるので、上げ忘れると影が違う地形の上を走る。
-pub const COURSE_VERSION: u32 = 2;
+pub const COURSE_VERSION: u32 = 3;
 
 /// UNIX 時刻（秒）から、その UTC の日の種を作る。1970-01-01 からの日数。
 pub fn today_seed(unix_seconds: f64) -> u64 {

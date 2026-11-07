@@ -14,12 +14,30 @@ pub const ENEMY_COLOR: Color = Color {
     b: 140.0 / 255.0,
     a: 1.0,
 };
-/// 敵が左へ流れる速さ。
+/// 揺れながら流れる敵が左へ流れる速さ。
 const DRIFT_SPEED: f32 = 120.0;
 /// 上下に揺れる幅。
 const SWAY: f32 = 60.0;
 /// 揺れの速さ（ラジアン毎秒）。
 const SWAY_RATE: f32 = 1.5;
+/// 上下に往復する敵。ゆっくり流れながら、大きく上下して通り道をふさぐ。
+const BOBBER_DRIFT_SPEED: f32 = 80.0;
+const BOBBER_SWAY: f32 = 200.0;
+const BOBBER_SWAY_RATE: f32 = 1.1;
+/// 往復の中心の高さの範囲。往復しても、ほかの敵と同じ高さ（250〜900）に収まる。
+const BOBBER_BASE_Y: (f32, f32) = (470.0, 680.0);
+/// 突進する敵が、溜める前に流れる速さ。
+const DASHER_IDLE_SPEED: f32 = 60.0;
+/// カメラ左端からこれだけ右まで来たら溜め始める。16:9 の画面では右端より内側で、溜めが見える。
+const DASH_TRIGGER: f32 = 2400.0;
+/// 溜めの時間（秒）。この間は止まって光り、突っ込んでくることを知らせる。
+const DASH_WINDUP: f32 = 0.7;
+/// 突っ込む速さ。
+const DASH_SPEED: f32 = 650.0;
+/// 往復する敵が出始める、最初の敵からの距離（400 m）。
+const BOBBER_FROM: f32 = 4000.0;
+/// 突進する敵が出始める、最初の敵からの距離（900 m）。
+const DASHER_FROM: f32 = 9000.0;
 /// 敵は、最も右まで進んだときのカメラ左端からこれだけ先に出す。
 /// 映す横幅の上限（`MAX_VIEW_WIDTH`、16:9 の横幅）の右端より少し外で、どの画面でも画面の中に急に現れない。
 const SPAWN_OFFSET: f32 = 3500.0;
@@ -37,7 +55,26 @@ const SPAWN_SPACING: (f32, f32) = (750.0, 250.0);
 /// 最初の敵からこれだけ先で、出す位置の間隔が最も狭くなる。
 const SPACING_RAMP: f32 = 15_000.0;
 
-/// 上下にゆっくり揺れながら、右から左へ流れてくる敵。
+/// 敵の種類。どれも同じ大きさで、ワイヤーを当てれば倒せ、触れたら終わる。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Kind {
+    /// 上下にゆっくり揺れながら、右から左へ流れてくる。
+    Floater,
+    /// ゆっくり流れながら、上下に大きく往復する。
+    Bobber,
+    /// ゆっくり流れてきて、画面に入ると止まって溜め、左へ速く突っ込んでくる。
+    Dasher(Dash),
+}
+
+/// 突進する敵の今の様子。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Dash {
+    Idle,
+    /// 溜め始めてからの時間（秒）。
+    Windup(f32),
+    Charging,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Enemy {
     pub position: Vec2,
@@ -45,25 +82,99 @@ pub struct Enemy {
     base_y: f32,
     /// 揺れの位相（ラジアン）。
     phase: f32,
+    kind: Kind,
 }
 
 impl Enemy {
+    /// 揺れながら流れる敵。
+    #[cfg(test)]
     pub fn new(position: Vec2, phase: f32) -> Self {
+        Self::with_kind(position, phase, Kind::Floater)
+    }
+
+    fn with_kind(position: Vec2, phase: f32, kind: Kind) -> Self {
         Self {
             position,
             base_y: position.y,
             phase,
+            kind,
         }
     }
 
-    fn update(&mut self, dt: f32) {
-        self.phase += SWAY_RATE * dt;
-        self.position.x -= DRIFT_SPEED * dt;
-        self.position.y = self.base_y + self.phase.sin() * SWAY;
+    /// `camera_x` は今のカメラ左端のワールド x 座標。
+    fn update(&mut self, camera_x: f32, dt: f32) {
+        match &mut self.kind {
+            Kind::Floater => {
+                self.phase += SWAY_RATE * dt;
+                self.position.x -= DRIFT_SPEED * dt;
+                self.position.y = self.base_y + self.phase.sin() * SWAY;
+            }
+            Kind::Bobber => {
+                self.phase += BOBBER_SWAY_RATE * dt;
+                self.position.x -= BOBBER_DRIFT_SPEED * dt;
+                self.position.y = self.base_y + self.phase.sin() * BOBBER_SWAY;
+            }
+            Kind::Dasher(dash) => match dash {
+                Dash::Idle => {
+                    self.position.x -= DASHER_IDLE_SPEED * dt;
+                    if self.position.x - camera_x <= DASH_TRIGGER {
+                        *dash = Dash::Windup(0.0);
+                    }
+                }
+                Dash::Windup(time) => {
+                    *time += dt;
+                    if *time >= DASH_WINDUP {
+                        *dash = Dash::Charging;
+                    }
+                }
+                Dash::Charging => self.position.x -= DASH_SPEED * dt,
+            },
+        }
     }
 
     fn draw(&self) {
-        draw_circle(self.position.x, self.position.y, ENEMY_RADIUS, ENEMY_COLOR);
+        let p = self.position;
+        let r = ENEMY_RADIUS;
+        match self.kind {
+            Kind::Floater => {}
+            // 上下に動くことが分かるよう、上下にひれを付ける。
+            Kind::Bobber => {
+                draw_triangle(
+                    p + vec2(-r * 0.45, -r * 0.8),
+                    p + vec2(r * 0.45, -r * 0.8),
+                    p + vec2(0.0, -r * 1.55),
+                    ENEMY_COLOR,
+                );
+                draw_triangle(
+                    p + vec2(-r * 0.45, r * 0.8),
+                    p + vec2(r * 0.45, r * 0.8),
+                    p + vec2(0.0, r * 1.55),
+                    ENEMY_COLOR,
+                );
+            }
+            // 左へ突っ込んでくることが分かるよう、左向きのとげを付ける。
+            Kind::Dasher(_) => draw_triangle(
+                p + vec2(-r * 0.6, -r * 0.7),
+                p + vec2(-r * 0.6, r * 0.7),
+                p + vec2(-r * 1.7, 0.0),
+                ENEMY_COLOR,
+            ),
+        }
+        draw_circle(p.x, p.y, r, ENEMY_COLOR);
+        // 溜めている間は白く明滅し、突っ込んでいる間は白い縁を付ける。
+        match self.kind {
+            Kind::Dasher(Dash::Windup(time)) => {
+                let blink = (time * 18.0).sin() * 0.5 + 0.5;
+                draw_circle(
+                    p.x,
+                    p.y,
+                    r * 0.6,
+                    Color::new(1.0, 1.0, 1.0, 0.3 + 0.6 * blink),
+                );
+            }
+            Kind::Dasher(Dash::Charging) => draw_circle_lines(p.x, p.y, r, 4.0, WHITE),
+            _ => {}
+        }
     }
 }
 
@@ -97,17 +208,23 @@ impl Enemies {
             self.spawn();
         }
         for enemy in &mut self.list {
-            enemy.update(dt);
+            enemy.update(camera_x, dt);
         }
         self.list
             .retain(|e| e.position.x > camera_x - DISCARD_BEHIND);
     }
 
     fn spawn(&mut self) {
-        let y = self.rng.gen_range(250.0, 900.0);
+        let past = self.next_x - self.first_x;
+        let kind = pick_kind(past, self.rng.gen_range(0.0, 1.0));
+        let y = match kind {
+            Kind::Bobber => self.rng.gen_range(BOBBER_BASE_Y.0, BOBBER_BASE_Y.1),
+            _ => self.rng.gen_range(250.0, 900.0),
+        };
         let phase = self.rng.gen_range(0.0, std::f32::consts::TAU);
-        self.list.push(Enemy::new(vec2(self.next_x, y), phase));
-        self.next_x += spawn_spacing(self.next_x - self.first_x);
+        self.list
+            .push(Enemy::with_kind(vec2(self.next_x, y), phase, kind));
+        self.next_x += spawn_spacing(past);
     }
 
     /// `origin` から `dir` へ伸ばした線が最初に当たる敵の番号と、当たる点までの距離。
@@ -132,6 +249,18 @@ impl Enemies {
         for enemy in &self.list {
             enemy.draw();
         }
+    }
+}
+
+/// 最初の敵から `past` だけ先に出す敵の種類。`roll` は 0 以上 1 未満の乱数。
+/// 新しい種類は出始める距離を過ぎると混ざり、揺れながら流れる敵も出続ける。
+fn pick_kind(past: f32, roll: f32) -> Kind {
+    if past >= DASHER_FROM && roll < 0.25 {
+        Kind::Dasher(Dash::Idle)
+    } else if past >= BOBBER_FROM && roll < 0.55 {
+        Kind::Bobber
+    } else {
+        Kind::Floater
     }
 }
 
@@ -219,13 +348,78 @@ mod tests {
         let mut highest = f32::MAX;
         let mut lowest = f32::MIN;
         for _ in 0..600 {
-            enemy.update(DT);
+            enemy.update(0.0, DT);
             highest = highest.min(enemy.position.y);
             lowest = lowest.max(enemy.position.y);
         }
         // 600 刻み = 5 秒。
         assert!((enemy.position.x - (1000.0 - DRIFT_SPEED * 5.0)).abs() < 1.0);
         assert!(lowest - highest > SWAY);
+    }
+
+    #[test]
+    fn new_kinds_join_further_on() {
+        for roll in [0.0, 0.3, 0.6, 0.99] {
+            assert_eq!(pick_kind(BOBBER_FROM - 1.0, roll), Kind::Floater);
+        }
+        assert_eq!(pick_kind(BOBBER_FROM, 0.3), Kind::Bobber);
+        assert_eq!(pick_kind(DASHER_FROM - 1.0, 0.1), Kind::Bobber);
+        assert_eq!(pick_kind(DASHER_FROM, 0.1), Kind::Dasher(Dash::Idle));
+        // 先へ進んでも、揺れながら流れる敵は出続ける。
+        assert_eq!(pick_kind(DASHER_FROM * 10.0, 0.9), Kind::Floater);
+    }
+
+    #[test]
+    fn all_kinds_show_up_on_a_long_course() {
+        let mut enemies = Enemies::new(3, 0.0);
+        let mut kinds = [false; 3];
+        let mut x = 0.0;
+        while x < 40_000.0 {
+            x += 500.0;
+            enemies.update(x, x, 0.0);
+            for enemy in &enemies.list {
+                kinds[match enemy.kind {
+                    Kind::Floater => 0,
+                    Kind::Bobber => 1,
+                    Kind::Dasher(_) => 2,
+                }] = true;
+            }
+        }
+        assert_eq!(kinds, [true; 3]);
+    }
+
+    #[test]
+    fn bobber_sweeps_a_wide_band() {
+        let mut enemy = Enemy::with_kind(vec2(1000.0, 575.0), 0.0, Kind::Bobber);
+        let (mut highest, mut lowest) = (f32::MAX, f32::MIN);
+        for _ in 0..1200 {
+            enemy.update(0.0, DT);
+            highest = highest.min(enemy.position.y);
+            lowest = lowest.max(enemy.position.y);
+        }
+        assert!(lowest - highest > BOBBER_SWAY * 1.9);
+        assert!(highest >= 250.0 && lowest <= 900.0 + 1.0);
+    }
+
+    #[test]
+    fn dasher_winds_up_on_screen_then_charges() {
+        let start = vec2(DASH_TRIGGER + 100.0, 500.0);
+        let mut enemy = Enemy::with_kind(start, 0.0, Kind::Dasher(Dash::Idle));
+        // 画面の外では、ゆっくり流れるだけ。
+        enemy.update(0.0, 1.0);
+        assert_eq!(enemy.kind, Kind::Dasher(Dash::Idle));
+        assert!((enemy.position.x - (start.x - DASHER_IDLE_SPEED)).abs() < 0.01);
+        // 近づくと止まって溜める。
+        enemy.update(0.0, 1.0);
+        assert!(matches!(enemy.kind, Kind::Dasher(Dash::Windup(_))));
+        let held = enemy.position.x;
+        enemy.update(0.0, DASH_WINDUP / 2.0);
+        assert_eq!(enemy.position.x, held);
+        // 溜め終えたら速く突っ込む。
+        enemy.update(0.0, DASH_WINDUP);
+        assert_eq!(enemy.kind, Kind::Dasher(Dash::Charging));
+        enemy.update(0.0, 1.0);
+        assert!((enemy.position.x - (held - DASH_SPEED)).abs() < 0.01);
     }
 
     #[test]

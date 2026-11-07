@@ -54,6 +54,30 @@ impl Text {
         );
     }
 
+    /// 中央に揃えて描くが、数字がどれも「0」の幅だとして位置を決める。
+    /// 毎秒変わる数字（残り時間など）で、文字の列が左右に揺れないようにする。
+    pub fn draw_centered_steady(
+        &self,
+        text: &str,
+        center_x: f32,
+        baseline_y: f32,
+        font_size: f32,
+        color: Color,
+    ) {
+        let template: String = text
+            .chars()
+            .map(|c| if c.is_ascii_digit() { '0' } else { c })
+            .collect();
+        let dimensions = measure_text(&template, Some(&self.font), font_size as u16, 1.0);
+        self.draw(
+            text,
+            center_x - dimensions.width / 2.0,
+            baseline_y,
+            font_size,
+            color,
+        );
+    }
+
     /// `center_y` が文字の縦の中心になるように描く。`x` は左端。
     pub fn draw_y_centered(&self, text: &str, x: f32, center_y: f32, font_size: f32, color: Color) {
         let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
@@ -173,10 +197,12 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 13] = [
+    const SOURCES: [(&str, &str); 15] = [
+        ("daily.rs", include_str!("daily.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),
+        ("hitstop.rs", include_str!("hitstop.rs")),
         ("level.rs", include_str!("level.rs")),
         ("main.rs", include_str!("main.rs")),
         ("particles.rs", include_str!("particles.rs")),

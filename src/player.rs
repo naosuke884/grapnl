@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use crate::sprites::{draw_sprite, Sprites};
+
 use crate::level::Level;
 
 pub const PLAYER_RADIUS: f32 = 14.0;
@@ -299,7 +301,7 @@ impl Player {
         Some(self.position + dir * MAX_WIRE_LENGTH)
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, sprites: &Sprites) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
             if self.rope.len() == ROPE_POINTS {
@@ -334,12 +336,7 @@ impl Player {
                 },
             );
         }
-        draw_circle(
-            self.position.x,
-            self.position.y,
-            PLAYER_RADIUS,
-            Color::from_rgba(240, 240, 250, 255),
-        );
+        draw_sprite(&sprites.player, self.position, WHITE);
     }
 }
 

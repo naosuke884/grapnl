@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use crate::sprites::Sprites;
+
 /// 天井や浮いたブロックなど、ワイヤーを刺せて自機がぶつかる地形。
 /// すべて軸に沿った長方形で表す。座標は y 下向きで、画面の上端が y = 0。
 #[derive(Default)]
@@ -52,17 +54,9 @@ impl Level {
         normal.map(|normal| Contact { position, normal })
     }
 
-    pub fn draw(&self) {
-        for b in &self.blocks {
-            draw_rectangle(b.x, b.y, b.w, b.h, Color::from_rgba(52, 62, 84, 255));
-            draw_rectangle_lines(
-                b.x,
-                b.y,
-                b.w,
-                b.h,
-                2.0,
-                Color::from_rgba(120, 180, 255, 255),
-            );
+    pub fn draw(&self, sprites: &Sprites) {
+        for &block in &self.blocks {
+            sprites.draw_block(block);
         }
     }
 }

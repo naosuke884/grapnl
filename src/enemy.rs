@@ -2,6 +2,7 @@ use macroquad::prelude::*;
 use macroquad::rand::RandGenerator;
 
 use crate::shake::GAME_OVER_MAGNITUDE;
+use crate::sprites::{draw_sprite, Sprites};
 use crate::view::MAX_VIEW_WIDTH;
 
 /// 敵の大きさ。ワイヤーを当てる的と、触れたら終わる判定の両方に使う。
@@ -132,48 +133,21 @@ impl Enemy {
         }
     }
 
-    fn draw(&self) {
-        let p = self.position;
-        let r = ENEMY_RADIUS;
-        match self.kind {
-            Kind::Floater => {}
-            // 上下に動くことが分かるよう、上下にひれを付ける。
-            Kind::Bobber => {
-                draw_triangle(
-                    p + vec2(-r * 0.45, -r * 0.8),
-                    p + vec2(r * 0.45, -r * 0.8),
-                    p + vec2(0.0, -r * 1.55),
-                    ENEMY_COLOR,
-                );
-                draw_triangle(
-                    p + vec2(-r * 0.45, r * 0.8),
-                    p + vec2(r * 0.45, r * 0.8),
-                    p + vec2(0.0, r * 1.55),
-                    ENEMY_COLOR,
-                );
-            }
-            // 左へ突っ込んでくることが分かるよう、左向きのとげを付ける。
-            Kind::Dasher(_) => draw_triangle(
-                p + vec2(-r * 0.6, -r * 0.7),
-                p + vec2(-r * 0.6, r * 0.7),
-                p + vec2(-r * 1.7, 0.0),
-                ENEMY_COLOR,
-            ),
-        }
-        draw_circle(p.x, p.y, r, ENEMY_COLOR);
-        // 溜めている間は白く明滅し、突っ込んでいる間は白い縁を付ける。
-        match self.kind {
-            Kind::Dasher(Dash::Windup(time)) => {
-                let blink = (time * 18.0).sin() * 0.5 + 0.5;
-                draw_circle(
-                    p.x,
-                    p.y,
-                    r * 0.6,
-                    Color::new(1.0, 1.0, 1.0, 0.3 + 0.6 * blink),
-                );
-            }
-            Kind::Dasher(Dash::Charging) => draw_circle_lines(p.x, p.y, r, 4.0, WHITE),
-            _ => {}
+    fn draw(&self, sprites: &Sprites) {
+        let sprite = match self.kind {
+            Kind::Floater => &sprites.floater,
+            Kind::Bobber => &sprites.bobber,
+            Kind::Dasher(_) => &sprites.dasher,
+        };
+        draw_sprite(sprite, self.position, WHITE);
+        // 溜めている間は白く明滅し、突っ込んでくることを知らせる。
+        if let Kind::Dasher(Dash::Windup(time)) = self.kind {
+            let blink = (time * 18.0).sin() * 0.5 + 0.5;
+            draw_sprite(
+                &sprites.dasher_flash,
+                self.position,
+                Color::new(1.0, 1.0, 1.0, 0.8 * blink),
+            );
         }
     }
 }
@@ -245,9 +219,9 @@ impl Enemies {
             .any(|e| e.position.distance(center) < ENEMY_RADIUS + radius)
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, sprites: &Sprites) {
         for enemy in &self.list {
-            enemy.draw();
+            enemy.draw(sprites);
         }
     }
 }

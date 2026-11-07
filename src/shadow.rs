@@ -6,8 +6,10 @@ use std::collections::HashMap;
 
 use macroquad::prelude::*;
 
+use crate::sprites::{draw_sprite, Sprites};
+
 use crate::game::FALL_LIMIT_Y;
-use crate::player::{Player, MAX_WIRE_LENGTH, PLAYER_RADIUS};
+use crate::player::{Player, MAX_WIRE_LENGTH};
 
 /// 送る中身の形式の版。形式を変えたら上げ、古い形式の人の状態は読まずに捨てる。
 const FORMAT_VERSION: u8 = 1;
@@ -218,13 +220,14 @@ impl Shadows {
             .collect()
     }
 
-    pub fn draw(&self, now: f64) {
+    pub fn draw(&self, now: f64, sprites: &Sprites) {
         let color = Color::from_rgba(150, 170, 220, 90);
         for (position, anchor) in self.positions(now) {
             if let Some(anchor) = anchor {
                 draw_line(position.x, position.y, anchor.x, anchor.y, 1.5, color);
             }
-            draw_circle(position.x, position.y, PLAYER_RADIUS, color);
+            // 自機と同じ絵を、青く透かして描く。
+            draw_sprite(&sprites.player, position, color);
         }
     }
 }

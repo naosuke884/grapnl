@@ -6,6 +6,7 @@ use crate::level::Level;
 use crate::particles::Particles;
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 use crate::score_popup::Popups;
+use crate::sprites::Sprites;
 use crate::text::Text;
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
@@ -306,7 +307,7 @@ impl Game {
     }
 
     /// ワールド座標のカメラ（`VIEW_HEIGHT` を画面の高さに映す）の下で呼ぶ。
-    pub fn draw(&self, text: &Text) {
+    pub fn draw(&self, text: &Text, sprites: &Sprites) {
         // 左から迫ってくる領域。右端に明るい線を引いて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
         let hazard_left = self.hazard_x - 10_000.0;
@@ -327,8 +328,8 @@ impl Game {
             200.0,
             Color::from_rgba(120, 40, 50, 160),
         );
-        self.level.draw();
-        self.enemies.draw();
+        self.level.draw(sprites);
+        self.enemies.draw(sprites);
         // ワイヤーを持っていないときは、今撃てば刺さる点（敵が手前なら敵）に照準を出す。
         if self.player.anchor.is_none() {
             let target = match self.enemy_target(self.aim) {
@@ -351,7 +352,7 @@ impl Game {
                 draw_line(end.x - d, end.y + d, end.x + d, end.y - d, 3.0, color);
             }
         }
-        self.player.draw();
+        self.player.draw(sprites);
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();
         // 入った得点は破片より手前に出し、何点入ったかを読めるようにする。

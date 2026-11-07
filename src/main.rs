@@ -15,6 +15,7 @@ mod score_popup;
 mod sfx;
 mod shadow;
 mod shake;
+mod sprites;
 mod text;
 mod tutorial;
 mod view;
@@ -60,6 +61,7 @@ fn window_conf() -> Conf {
 #[macroquad::main(window_conf)]
 async fn main() {
     let text = Text::load();
+    let sprites = sprites::Sprites::load();
     // 音は始まる前に全部読み込む。
     let sfx = sfx::Sfx::load().await;
     // 曲は大きいので待たずに始め、読み終えたら流す。
@@ -211,8 +213,8 @@ async fn main() {
         shaken.target += shake.offset();
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
-        shadows.draw(now);
-        game.draw(&text);
+        shadows.draw(now, &sprites);
+        game.draw(&text, &sprites);
 
         set_default_camera();
         // ワールドを映す範囲の外は黒く塗り、横長の画面でも先が見える幅を変えない。

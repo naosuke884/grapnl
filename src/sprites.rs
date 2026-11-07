@@ -1,0 +1,260 @@
+//! ドット絵。絵は文字の並びでここに書き、起動時にテクスチャにする。素材のファイルは使わない。
+//! 文字 1 つがドット 1 つで、`.` は透明。色は絵ごとのパレットで決める。
+//! 拡大しても滲まないよう、テクスチャは最近傍で拡大する。
+
+use macroquad::prelude::*;
+
+/// 自機と敵のドット 1 つのワールドでの大きさ。16:9 の画面で約 1.5 ピクセルになる。
+pub const SPRITE_DOT: f32 = 4.0;
+/// 地形の模様のドット 1 つの大きさ。
+const TILE_DOT: f32 = 4.0;
+
+/// 自機。8×8 で、ワールドで 32（当たり判定の直径 28 より少し大きい）。右を向いた目がある。
+const PLAYER: &[&str] = &[
+    "..OOOO..", //
+    ".OWWWWO.", "OWWWWKWO", "OWWWWKWO", "OWWWWWWO", "OLWWWWLO", ".OLLLLO.", "..OOOO..",
+];
+const PLAYER_PALETTE: &[(char, Color)] = &[
+    ('O', Color::new(0.16, 0.18, 0.26, 1.0)),
+    ('W', Color::new(0.94, 0.94, 0.98, 1.0)),
+    ('L', Color::new(0.70, 0.74, 0.86, 1.0)),
+    ('K', Color::new(0.10, 0.12, 0.20, 1.0)),
+];
+
+/// 揺れながら流れる敵。16×16 で、ワールドで 64（当たり判定の直径と同じ）。
+const FLOATER: &[&str] = &[
+    ".....OOOOOO.....",
+    "...OOGGGGGGOO...",
+    "..OGGHHGGGGGGO..",
+    ".OGGHHGGGGGGGGO.",
+    ".OGHHGGGGGGGGGO.",
+    "OGGHGGWWGGWWGGGO",
+    "OGGGGGWKGGWKGGGO",
+    "OGGGGGWKGGWKGGGO",
+    "OGGGGGGGGGGGGGGO",
+    "OGGGGGGGGGGGGGGO",
+    "OGGGGGGKKKKGGGDO",
+    ".OGGGGGGGGGGGDO.",
+    ".OGGGGGGGGGGDDO.",
+    "..ODGGGGGGGDDO..",
+    "...OODDDDDDOO...",
+    ".....OOOOOO.....",
+];
+/// 上下に往復する敵。揺れる敵の上下にひれを付け、縦に動くことが分かるようにする。16×22 で、体は真ん中の 16 行。
+const BOBBER: &[&str] = &[
+    ".......OO.......",
+    "......OGGO......",
+    ".....OGHGDO.....",
+    ".....OOOOOO.....",
+    "...OOGGGGGGOO...",
+    "..OGGHHGGGGGGO..",
+    ".OGGHHGGGGGGGGO.",
+    ".OGHHGGGGGGGGGO.",
+    "OGGHGGWWGGWWGGGO",
+    "OGGGGGWKGGWKGGGO",
+    "OGGGGGWKGGWKGGGO",
+    "OGGGGGGGGGGGGGGO",
+    "OGGGGGGGGGGGGGGO",
+    "OGGGGGGKKKKGGGDO",
+    ".OGGGGGGGGGGGDO.",
+    ".OGGGGGGGGGGDDO.",
+    "..ODGGGGGGGDDO..",
+    "...OODDDDDDOO...",
+    ".....OOOOOO.....",
+    ".....ODGGDO.....",
+    "......ODDO......",
+    ".......OO.......",
+];
+/// 突進する敵。左へ尖ったとげと、つり上がった目。28×16 で、体の中心が絵の中心に来るよう右を空ける。
+const DASHER: &[&str] = &[
+    "...........OOOOOO...........",
+    ".........OOGGGGGGOO.........",
+    "........OGGHHGGGGGGO........",
+    ".......OGGHHGGGGGGGGO.......",
+    ".......OGHHGGGGGGGGGO.......",
+    "...OOOOGGWGGGGWGGGGGGO......",
+    ".OOGGGGGGWWGGWWGGGGGGO......",
+    "OGGGGGGGGWKKGKWGGGGGGO......",
+    "OGGGGGGGGGKKGKKGGGGGGO......",
+    ".OODDDDGGGGGGGGGGGGGGO......",
+    "...OOOOGGGGGGGGGGGGGDO......",
+    ".......OGGKKKKKKGGGDO.......",
+    ".......OGGGGGGGGGGDDO.......",
+    "........ODGGGGGGGDDO........",
+    ".........OODDDDDDOO.........",
+    "...........OOOOOO...........",
+];
+const ENEMY_PALETTE: &[(char, Color)] = &[
+    ('O', Color::new(0.08, 0.22, 0.14, 1.0)),
+    ('G', Color::new(0.47, 0.86, 0.55, 1.0)),
+    ('H', Color::new(0.78, 0.98, 0.80, 1.0)),
+    ('D', Color::new(0.27, 0.62, 0.38, 1.0)),
+    ('W', Color::new(0.97, 0.98, 0.95, 1.0)),
+    ('K', Color::new(0.08, 0.10, 0.12, 1.0)),
+];
+
+/// 天井と浮いたブロックの模様。8×8 を敷き詰める。石を積んだ形。
+const TILE: &[&str] = &[
+    "MMMMMMMS", //
+    "MLMMMMMS", "MMMMMMMS", "SSSSSSSS", "MMMSMMMM", "MMMSMLMM", "MMMSMMMM", "SSSSSSSS",
+];
+const TILE_PALETTE: &[(char, Color)] = &[
+    ('M', Color::new(0.20, 0.24, 0.33, 1.0)),
+    ('L', Color::new(0.27, 0.32, 0.43, 1.0)),
+    ('S', Color::new(0.13, 0.15, 0.22, 1.0)),
+];
+/// ブロックの縁。ワイヤーを刺せる面が見えるよう、明るい色で 1 ドット分囲む。
+const EDGE_COLOR: Color = Color::new(0.47, 0.71, 1.0, 1.0);
+
+pub struct Sprites {
+    pub player: Texture2D,
+    pub floater: Texture2D,
+    pub bobber: Texture2D,
+    pub dasher: Texture2D,
+    /// 突進する敵が溜めている間に、明滅させる白い絵。
+    pub dasher_flash: Texture2D,
+    tile: Texture2D,
+}
+
+impl Sprites {
+    pub fn load() -> Self {
+        Self {
+            player: texture(&image(PLAYER, PLAYER_PALETTE)),
+            floater: texture(&image(FLOATER, ENEMY_PALETTE)),
+            bobber: texture(&image(BOBBER, ENEMY_PALETTE)),
+            dasher: texture(&image(DASHER, ENEMY_PALETTE)),
+            dasher_flash: texture(&silhouette(&image(DASHER, ENEMY_PALETTE))),
+            tile: texture(&image(TILE, TILE_PALETTE)),
+        }
+    }
+
+    /// 地形のブロックを、模様を敷き詰めて縁を付けて描く。
+    pub fn draw_block(&self, block: Rect) {
+        let size = TILE.len() as f32 * TILE_DOT;
+        // 模様はワールドの格子に合わせ、ブロックの位置によって模様がずれないようにする。
+        let mut y = (block.y / size).floor() * size;
+        while y < block.bottom() {
+            let mut x = (block.x / size).floor() * size;
+            while x < block.right() {
+                let cell = Rect::new(x, y, size, size);
+                if let Some(visible) = cell.intersect(block) {
+                    let source = Rect::new(
+                        (visible.x - x) / TILE_DOT,
+                        (visible.y - y) / TILE_DOT,
+                        visible.w / TILE_DOT,
+                        visible.h / TILE_DOT,
+                    );
+                    draw_texture_ex(
+                        &self.tile,
+                        visible.x,
+                        visible.y,
+                        WHITE,
+                        DrawTextureParams {
+                            dest_size: Some(visible.size()),
+                            source: Some(source),
+                            ..Default::default()
+                        },
+                    );
+                }
+                x += size;
+            }
+            y += size;
+        }
+        let edge = TILE_DOT;
+        draw_rectangle(block.x, block.y, block.w, edge, EDGE_COLOR);
+        draw_rectangle(block.x, block.bottom() - edge, block.w, edge, EDGE_COLOR);
+        draw_rectangle(block.x, block.y, edge, block.h, EDGE_COLOR);
+        draw_rectangle(block.right() - edge, block.y, edge, block.h, EDGE_COLOR);
+    }
+}
+
+/// 絵を `center` を中心に、ドット 1 つを `SPRITE_DOT` の大きさで描く。`color` を掛ける。
+pub fn draw_sprite(texture: &Texture2D, center: Vec2, color: Color) {
+    let size = vec2(texture.width(), texture.height()) * SPRITE_DOT;
+    draw_texture_ex(
+        texture,
+        center.x - size.x / 2.0,
+        center.y - size.y / 2.0,
+        color,
+        DrawTextureParams {
+            dest_size: Some(size),
+            ..Default::default()
+        },
+    );
+}
+
+fn texture(image: &Image) -> Texture2D {
+    let texture = Texture2D::from_image(image);
+    texture.set_filter(FilterMode::Nearest);
+    texture
+}
+
+/// 文字の並びを絵にする。パレットに無い文字は透明。
+fn image(rows: &[&str], palette: &[(char, Color)]) -> Image {
+    let width = rows[0].chars().count() as u16;
+    let height = rows.len() as u16;
+    let mut image = Image::gen_image_color(width, height, BLANK);
+    for (y, row) in rows.iter().enumerate() {
+        for (x, c) in row.chars().enumerate() {
+            if let Some(&(_, color)) = palette.iter().find(|(key, _)| *key == c) {
+                image.set_pixel(x as u32, y as u32, color);
+            }
+        }
+    }
+    image
+}
+
+/// 透明でないドットをすべて白にした絵。
+fn silhouette(image: &Image) -> Image {
+    let mut white = image.clone();
+    for y in 0..image.height() as u32 {
+        for x in 0..image.width() as u32 {
+            if image.get_pixel(x, y).a > 0.0 {
+                white.set_pixel(x, y, WHITE);
+            }
+        }
+    }
+    white
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Palette = &'static [(char, Color)];
+    const ALL: [(&str, &[&str], Palette); 5] = [
+        ("PLAYER", PLAYER, PLAYER_PALETTE),
+        ("FLOATER", FLOATER, ENEMY_PALETTE),
+        ("BOBBER", BOBBER, ENEMY_PALETTE),
+        ("DASHER", DASHER, ENEMY_PALETTE),
+        ("TILE", TILE, TILE_PALETTE),
+    ];
+
+    #[test]
+    fn every_row_has_the_same_width_and_known_colors() {
+        for (name, rows, palette) in ALL {
+            let width = rows[0].chars().count();
+            for (y, row) in rows.iter().enumerate() {
+                assert_eq!(row.chars().count(), width, "{name} の {y} 行目の幅");
+                for c in row.chars() {
+                    assert!(
+                        c == '.' || palette.iter().any(|(key, _)| *key == c),
+                        "{name} の {y} 行目の {c:?} がパレットに無い"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sprites_cover_their_hit_circles() {
+        use crate::enemy::ENEMY_RADIUS;
+        use crate::player::PLAYER_RADIUS;
+        assert!(PLAYER.len() as f32 * SPRITE_DOT >= PLAYER_RADIUS * 2.0);
+        assert_eq!(FLOATER.len() as f32 * SPRITE_DOT, ENEMY_RADIUS * 2.0);
+        assert_eq!(DASHER.len() as f32 * SPRITE_DOT, ENEMY_RADIUS * 2.0);
+        // 体（16 行）の上下にひれが同じ数ずつ付き、体の中心が絵の中心に来る。
+        assert_eq!(BOBBER.len(), FLOATER.len() + 6);
+        assert_eq!(&BOBBER[3..19], FLOATER);
+    }
+}

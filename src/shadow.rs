@@ -11,7 +11,7 @@ use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
 use crate::text::{self, Fonts};
 
 use crate::game::FALL_LIMIT_Y;
-use crate::player::{Player, MAX_WIRE_LENGTH, PLAYER_RADIUS};
+use crate::player::{Player, MAX_STRETCH, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 
 /// 送る中身の形式の版。形式を変えたら上げ、古い形式の人の状態は読まずに捨てる。
 const FORMAT_VERSION: u8 = 1;
@@ -35,8 +35,9 @@ const MAX_PEERS: usize = 32;
 /// 受け付ける位置の範囲。コースの外のありえない値は捨てる。
 const X_RANGE: (f32, f32) = (-1.0e5, 1.0e7);
 const Y_RANGE: (f32, f32) = (-2000.0, FALL_LIMIT_Y + 1000.0);
-/// 支点は自機からこれより離れない。ワイヤーは最大の長さの 1.4 倍まで伸びる。
+/// 支点は自機からこれより離れない。ワイヤーは最大の長さの `MAX_STRETCH` 倍まで伸びる。
 const MAX_ANCHOR_DISTANCE: f32 = MAX_WIRE_LENGTH * 1.5;
+const _: () = assert!(MAX_ANCHOR_DISTANCE > MAX_WIRE_LENGTH * MAX_STRETCH);
 
 /// 1 人ぶんの状態。
 #[derive(Clone, Copy, Debug, PartialEq)]

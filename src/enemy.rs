@@ -25,7 +25,9 @@ const SWAY_RATE: f32 = 1.5;
 const BOBBER_DRIFT_SPEED: f32 = 80.0;
 const BOBBER_SWAY: f32 = 200.0;
 const BOBBER_SWAY_RATE: f32 = 1.1;
-/// 往復の中心の高さの範囲。往復しても、ほかの敵と同じ高さ（250〜900）に収まる。
+/// ほかの敵を出す高さの範囲。
+const SPAWN_Y: (f32, f32) = (250.0, 900.0);
+/// 往復の中心の高さの範囲。往復しても、ほかの敵と同じ高さ（`SPAWN_Y`）に収まる。
 const BOBBER_BASE_Y: (f32, f32) = (470.0, 680.0);
 /// 突進する敵が、溜める前に流れる速さ。
 const DASHER_IDLE_SPEED: f32 = 60.0;
@@ -193,7 +195,7 @@ impl Enemies {
         let kind = pick_kind(past, self.rng.gen_range(0.0, 1.0));
         let y = match kind {
             Kind::Bobber => self.rng.gen_range(BOBBER_BASE_Y.0, BOBBER_BASE_Y.1),
-            _ => self.rng.gen_range(250.0, 900.0),
+            _ => self.rng.gen_range(SPAWN_Y.0, SPAWN_Y.1),
         };
         let phase = self.rng.gen_range(0.0, std::f32::consts::TAU);
         self.list
@@ -372,7 +374,7 @@ mod tests {
             lowest = lowest.max(enemy.position.y);
         }
         assert!(lowest - highest > BOBBER_SWAY * 1.9);
-        assert!(highest >= 250.0 && lowest <= 900.0 + 1.0);
+        assert!(highest >= SPAWN_Y.0 && lowest <= SPAWN_Y.1 + 1.0);
     }
 
     #[test]

@@ -107,16 +107,16 @@ impl EndReason {
 
 /// 1 回のプレイの状態。
 pub struct Game {
-    pub level: Level,
+    level: Level,
     generator: Generator,
     pub player: Player,
-    pub enemies: Enemies,
+    enemies: Enemies,
     /// ワイヤーで倒した敵の数。
     pub kills: u32,
     /// 敵を倒して得た点の合計。
     kill_points: u32,
     /// 天井やブロックに刺さずに続けて倒した数。次に倒した敵の倍率は chain + 1 になる。
-    pub chain: u32,
+    chain: u32,
     /// カメラの左端のワールド x 座標。
     pub camera_x: f32,
     start_x: f32,
@@ -124,7 +124,7 @@ pub struct Game {
     /// 直前の更新で受けたカーソルの位置。照準の表示に使う。
     aim: Vec2,
     /// 左から迫ってくる領域の右端のワールド x 座標。これより左に入ったら終わり。
-    pub hazard_x: f32,
+    hazard_x: f32,
     /// 迫ってくる領域の今の速さ。
     hazard_speed: f32,
     /// 終わった理由。終わるまでは `None`。
@@ -283,7 +283,7 @@ impl Game {
     }
 
     /// 次に倒した敵に掛かる連鎖の倍率。
-    pub fn next_multiplier(&self) -> u32 {
+    fn next_multiplier(&self) -> u32 {
         (self.chain + 1).min(MAX_MULTIPLIER)
     }
 
@@ -297,8 +297,16 @@ impl Game {
         (self.best_x - self.start_x) / UNITS_PER_METER
     }
 
-    /// ワールド座標のカメラの下で呼ぶ。`world_per_pixel` は画面の 1 ピクセルに映るワールドの幅。
-    pub fn draw(&self, text: &Text, sprites: &Sprites, world_per_pixel: f32) {
+    /// 左から迫ってくる領域と、落ちたら終わる高さの帯を描く。
+    fn draw_hazards(&self) {
+        /// ぎざぎざの縁の、`cell` 番目のマスの太さ（ドット数）。
+        fn edge_dots(cell: i32) -> f32 {
+            if cell.rem_euclid(4) < 2 {
+                3.0
+            } else {
+                2.0
+            }
+        }
         // 左から迫ってくる領域。右端にぎざぎざの明るい縁を付けて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
         let edge_color = Color::from_rgba(240, 90, 110, 255);
@@ -308,7 +316,7 @@ impl Game {
         let edge_x = (self.hazard_x / dot).round() * dot;
         for row in (-1000.0 / dot) as i32..(3000.0 / dot) as i32 {
             // 太さ 2 ドットの縁を、2 ドットごとに内側へ 1 ドット出っ張らせる。縁の右端が触れたら終わる境目。
-            let width = if row.rem_euclid(4) < 2 { 3.0 } else { 2.0 };
+            let width = edge_dots(row);
             draw_rectangle(
                 edge_x - width * dot,
                 row as f32 * dot,
@@ -323,17 +331,13 @@ impl Game {
         draw_rectangle(band_left, FALL_LIMIT_Y, band_width, 200.0, hazard_color);
         for column in 0..(band_width / dot) as i32 {
             let x = band_left + column as f32 * dot;
-            let height = if ((x / dot) as i32).rem_euclid(4) < 2 {
-                3.0
-            } else {
-                2.0
-            };
+            let height = edge_dots((x / dot) as i32);
             draw_rectangle(x, FALL_LIMIT_Y, dot, height * dot, edge_color);
         }
-        // ワイヤーとフックは地形より先に描き、地形に食い込んだ爪を隠す。
-        self.player.draw_wire();
-        self.level.draw(sprites);
-        self.enemies.draw(sprites);
+    }
+
+    /// 照準か、届かない向きの × を描く。
+    fn draw_aim(&self, sprites: &Sprites) {
         // ワイヤーを持っていないときは、今撃てば刺さる点（敵が手前なら敵）に照準を出す。
         if self.player.anchor.is_none() {
             let target = match self.enemy_target(self.aim) {
@@ -351,6 +355,16 @@ impl Game {
                 );
             }
         }
+    }
+
+    /// ワールド座標のカメラの下で呼ぶ。`world_per_pixel` は画面の 1 ピクセルに映るワールドの幅。
+    pub fn draw(&self, text: &Text, sprites: &Sprites, world_per_pixel: f32) {
+        self.draw_hazards();
+        // ワイヤーとフックは地形より先に描き、地形に食い込んだ爪を隠す。
+        self.player.draw_wire();
+        self.level.draw(sprites);
+        self.enemies.draw(sprites);
+        self.draw_aim(sprites);
         self.player.draw(sprites);
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();

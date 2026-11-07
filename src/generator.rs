@@ -4,9 +4,9 @@ use macroquad::rand::RandGenerator;
 use crate::level::Level;
 
 /// 隣り合う刺し先（天井かブロック）の横の間隔の上限。ワイヤーの最大の長さより十分短くする。
-pub const MAX_ANCHOR_GAP: f32 = 350.0;
+const MAX_ANCHOR_GAP: f32 = 350.0;
 /// 刺し先はこれより上に置く（画面の上半分）。
-pub const ANCHOR_LOWEST: f32 = 450.0;
+const ANCHOR_LOWEST: f32 = 450.0;
 /// 天井の上端。画面より十分上に置き、天井の上を回り込めないようにする。
 const CEILING_TOP: f32 = -1000.0;
 /// 開始位置のあたりの平らな天井の高さ。最初の数秒は落ち着いて振れるようにする。
@@ -16,7 +16,7 @@ const CEILING_WIDTH: (f32, f32) = (200.0, 500.0);
 const CEILING_BOTTOM: (f32, f32) = (80.0, 260.0);
 /// 進むほど地形を難しくする。平らな天井が終わってから、この距離で最も難しくなる（3000 m）。
 /// 敵の出る間隔が詰まり切る距離（`enemy::SPACING_RAMP`、1500 m）より長くし、その後も変わり続けるようにする。
-pub const DIFFICULTY_RAMP: f32 = 30_000.0;
+const DIFFICULTY_RAMP: f32 = 30_000.0;
 /// 天井のない区間（穴）の幅の範囲と、出る確率。左が始めのころ、右が最も難しいとき。
 const HOLE_WIDTH: Ramp = Ramp((300.0, 900.0), (600.0, 1600.0));
 const HOLE_CHANCE: (f32, f32) = (0.35, 0.6);
@@ -29,6 +29,8 @@ const BLOCK_TOP: (f32, f32) = (160.0, 380.0);
 const BLOCK_SPACING: Ramp = Ramp((150.0, 300.0), (260.0, MAX_ANCHOR_GAP));
 /// 天井の下に障害物として浮いたブロックを置く確率。
 const EXTRA_BLOCK_CHANCE: (f32, f32) = (0.3, 0.5);
+/// 天井の下に置くブロックの上端は、天井の下端から少なくともこれだけ下げる。
+const EXTRA_BLOCK_BELOW: f32 = 80.0;
 
 /// 始めのころの範囲と、最も難しいときの範囲。難しさ（0 から 1）に応じて両端を間で取る。
 #[derive(Clone, Copy)]
@@ -94,7 +96,7 @@ impl Generator {
                 let extra_chance = lerp(EXTRA_BLOCK_CHANCE.0, EXTRA_BLOCK_CHANCE.1, difficulty);
                 if self.rng.gen_range(0.0, 1.0) < extra_chance {
                     let x = start + self.rng.gen_range(0.0, width * 0.5);
-                    self.add_block(level, x, bottom + 80.0, difficulty);
+                    self.add_block(level, x, bottom + EXTRA_BLOCK_BELOW, difficulty);
                 }
             }
         }

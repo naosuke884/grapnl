@@ -22,7 +22,7 @@ const WIRE_STIFFNESS: f32 = 150.0;
 /// 伸び縮みの揺れを収める強さ。0 だとびよんびよんと揺れ続ける。
 const WIRE_DAMPING: f32 = 4.0;
 /// ワイヤーが伸びられる上限（長さに対する比）。速すぎるときに伸び切って飛んでいかないようにする。
-const MAX_STRETCH: f32 = 1.4;
+pub(crate) const MAX_STRETCH: f32 = 1.4;
 /// 画面に描くワイヤーの節の数。節どうしをつなぎ、しなって見えるようにする。
 const ROPE_POINTS: usize = 20;
 /// 外した、または戻したワイヤーが手元へ戻るまでの時間。
@@ -247,7 +247,7 @@ impl Player {
         if dir == Vec2::ZERO {
             return;
         }
-        match level.raycast(self.position, dir, MAX_WIRE_LENGTH) {
+        match self.wire_target(aim, level) {
             Some(point) => {
                 let length = point.distance(self.position).max(MIN_WIRE_LENGTH);
                 self.anchor = Some(Anchor {

@@ -4,7 +4,6 @@ mod game;
 mod generator;
 mod hitstop;
 mod level;
-mod menu;
 mod page;
 mod particles;
 mod pause;
@@ -21,10 +20,8 @@ use macroquad::prelude::*;
 
 use game::Game;
 use hitstop::HitStop;
-use menu::{Action, Menu};
 use pause::Pause;
 use player::WireInput;
-use roommate_sdk::DeleteStatus;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
@@ -71,8 +68,6 @@ async fn main() {
     let mut shake = Shake::default();
     // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
     let mut hit_stop = HitStop::default();
-    // 遊んでいない間に出している画面。開いたときはタイトルから始め、遊んでいる間は None。
-    let mut menu = Some(Menu::Title);
     let mut pause = Pause::default();
 
     loop {
@@ -87,16 +82,11 @@ async fn main() {
         let right_click = is_mouse_button_pressed(MouseButton::Right);
         wire_pressed |= left_click;
         boost_pressed |= right_click;
-        let clicked = left_click;
-        // 画面の文字やボタンは、ワールドを映す範囲の左上を原点にした座標で置く。マウスも同じ座標に直す。
+        // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。
         let screen = playfield.rect.size();
-        let mouse = Vec2::from(mouse_position()) - playfield.rect.point();
-        let measure = |label: &str, size: f32| text.width(label, size);
-        let delete_status = roommate_sdk::delete_status();
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
-        // タイトルなどの画面とゲームオーバーの間は止めない。
         match pause.update(
-            game.over || menu.is_some(),
+            game.over,
             is_key_pressed(KeyCode::Escape),
             left_click || right_click,
             page::lost_focus(),
@@ -114,54 +104,21 @@ async fn main() {
                 accumulator = 0.0;
             }
         }
-        if let Some(current) = menu {
-            // 画面のボタンを押したクリックでゲームが始まったり、ワイヤーを撃ったりしないよう、
-            // 遊んでいない間のクリックはここで使い切る。
-            if clicked {
-                let buttons = menu::buttons(current, delete_status, screen, &measure);
-                match menu::click(current, mouse, &buttons) {
-                    Action::None => {}
-                    Action::Start => {
-                        // タイトルを出している間に日付が変わっていても、今日のコースで始める。
-                        game = Game::new();
-                        realtime::join(&game::room_key(game.seed()));
-                        accumulator = 0.0;
-                        until_send = 0.0;
-                        hit_stop = HitStop::default();
-                        menu = None;
-                    }
-                    Action::OpenConfirm => menu = Some(Menu::ConfirmDelete),
-                    Action::Delete => {
-                        roommate_sdk::request_delete();
-                        menu = Some(Menu::DeleteResult);
-                    }
-                    Action::BackToTitle => menu = Some(Menu::Title),
-                }
-            }
-            wire_pressed = false;
-            boost_pressed = false;
-        } else if game.over {
+        if game.over {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             if retry_requested(
                 since_over,
-                clicked,
+                is_mouse_button_pressed(MouseButton::Left),
                 is_key_pressed(KeyCode::R),
                 is_key_pressed(KeyCode::Space),
             ) {
-                // 右下の「タイトルへ」をクリックしたときは、始めずにタイトルを出す。データはタイトルから消す。
-                let to_title =
-                    menu::corner_button(menu::TITLE_LABEL, Action::BackToTitle, screen, &measure);
-                let back_to_title = clicked && to_title.contains(mouse);
                 game = Game::new();
                 // 日付が変わっていれば、新しいコースの部屋へ移る。
                 realtime::join(&game::room_key(game.seed()));
                 accumulator = 0.0;
                 since_over = 0.0;
                 hit_stop = HitStop::default();
-                if back_to_title {
-                    menu = Some(Menu::Title);
-                }
             }
             wire_pressed = false;
             boost_pressed = false;
@@ -199,8 +156,8 @@ async fn main() {
             }
         }
         shadows.forget_stale(now);
-        // 終わった後、タイトルなどの画面、一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over && menu.is_none() && !pause.paused() {
+        // 終わった後と一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
+        if !game.over && !pause.paused() {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -288,16 +245,7 @@ async fn main() {
             draw_paused(&text, screen);
         }
         if game.over {
-            draw_game_over(&text, &game, since_over, &best, delete_status, screen);
-            if since_over >= RETRY_DELAY {
-                let to_title =
-                    menu::corner_button(menu::TITLE_LABEL, Action::BackToTitle, screen, &measure);
-                menu::draw_corner_button(&text, &to_title, mouse);
-            }
-        }
-        if let Some(current) = menu {
-            let buttons = menu::buttons(current, delete_status, screen, &measure);
-            menu::draw(&text, current, delete_status, &buttons, mouse, screen);
+            draw_game_over(&text, &game, since_over, &best, screen);
         }
 
         next_frame().await
@@ -346,14 +294,7 @@ fn best_label(best: Option<u32>) -> String {
     }
 }
 
-fn draw_game_over(
-    text: &Text,
-    game: &Game,
-    since_over: f32,
-    best: &str,
-    delete_status: DeleteStatus,
-    screen: Vec2,
-) {
+fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str, screen: Vec2) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
     let center = screen / 2.0;
     text.draw_centered("ゲームオーバー", center.x, center.y - 20.0, 56.0, WHITE);
@@ -395,15 +336,6 @@ fn draw_game_over(
         22.0,
         Color::from_rgba(150, 200, 235, 255),
     );
-    if delete_status == DeleteStatus::Done {
-        text.draw_centered(
-            menu::NOT_RECORDED,
-            center.x,
-            center.y + 172.0,
-            22.0,
-            menu::NOTICE,
-        );
-    }
 }
 
 #[cfg(test)]

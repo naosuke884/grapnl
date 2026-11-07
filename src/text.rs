@@ -197,7 +197,7 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 17] = [
+    const SOURCES: [(&str, &str); 18] = [
         ("daily.rs", include_str!("daily.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
@@ -215,6 +215,7 @@ mod tests {
         ("shadow.rs", include_str!("shadow.rs")),
         ("shake.rs", include_str!("shake.rs")),
         ("text.rs", include_str!("text.rs")),
+        ("view.rs", include_str!("view.rs")),
     ];
 
     /// テストのモジュールより前だけを返す。テストの失敗メッセージは画面に出ないので、フォントに入れない。

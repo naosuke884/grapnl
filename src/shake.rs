@@ -12,7 +12,7 @@ const KILL_MAGNITUDE: f32 = 24.0;
 /// 敵を倒したときに揺れている時間（秒）。
 const KILL_DURATION: f32 = 0.18;
 /// ゲームオーバーの揺れ幅。倒したときの 3 倍。
-const GAME_OVER_MAGNITUDE: f32 = 72.0;
+pub const GAME_OVER_MAGNITUDE: f32 = 72.0;
 const GAME_OVER_DURATION: f32 = 0.5;
 /// 横と縦の揺れの速さ（rad/s）。割り切れない比にして、往復が同じ線をなぞらないようにする。
 const FREQUENCY_X: f32 = 71.0;

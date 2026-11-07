@@ -14,16 +14,18 @@ mod sfx;
 mod shadow;
 mod shake;
 mod text;
+mod view;
 
 use macroquad::prelude::*;
 
-use game::{Game, VIEW_HEIGHT};
+use game::Game;
 use hitstop::HitStop;
 use pause::Pause;
 use player::WireInput;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
+use view::Playfield;
 
 /// 更新は固定の刻みで回し、画面のリフレッシュレートで手触りが変わらないようにする。
 const FIXED_DT: f32 = 1.0 / 120.0;
@@ -72,12 +74,16 @@ async fn main() {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
         // このフレームの出来事で揺らし始めた分は、減らす前に描けるよう先に進める。
         shake.update(frame_time);
-        let camera = view_camera(game.camera_x);
+        // 16:9 より横長の画面では、ワールドを中央の 16:9 の範囲に映す。
+        let playfield = Playfield::current();
+        let camera = playfield.camera(game.camera_x);
         let aim = camera.screen_to_world(mouse_position().into());
         let left_click = is_mouse_button_pressed(MouseButton::Left);
         let right_click = is_mouse_button_pressed(MouseButton::Right);
         wire_pressed |= left_click;
         boost_pressed |= right_click;
+        // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。
+        let screen = playfield.rect.size();
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
         match pause.update(
             game.over,
@@ -163,7 +169,7 @@ async fn main() {
         clear_background(Color::from_rgba(16, 18, 24, 255));
 
         // 揺れは描画用のカメラだけに足す。照準は揺れていない `camera` で変換する。
-        let mut shaken = view_camera(game.camera_x);
+        let mut shaken = playfield.camera(game.camera_x);
         shaken.target += shake.offset();
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
@@ -171,6 +177,9 @@ async fn main() {
         game.draw(&text);
 
         set_default_camera();
+        // ワールドを映す範囲の外は黒く塗り、横長の画面でも先が見える幅を変えない。
+        playfield.draw_bars();
+        set_camera(&playfield.hud_camera());
         text.draw(
             &format!(
                 "スコア {}   {:.0} m   撃破 {}",
@@ -186,7 +195,7 @@ async fn main() {
         text.draw(
             "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
             16.0,
-            screen_height() - 16.0,
+            screen.y - 16.0,
             22.0,
             Color::from_rgba(150, 160, 175, 200),
         );
@@ -229,30 +238,17 @@ async fn main() {
         // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
         if !game.over {
             if let Some(meters) = game.offscreen_hazard_distance() {
-                draw_offscreen_hazard(&text, meters);
+                draw_offscreen_hazard(&text, meters, screen);
             }
         }
         if pause.paused() {
-            draw_paused(&text);
+            draw_paused(&text, screen);
         }
         if game.over {
-            draw_game_over(&text, &game, since_over, &best);
+            draw_game_over(&text, &game, since_over, &best, screen);
         }
 
         next_frame().await
-    }
-}
-
-/// 画面に映るワールドの範囲を映すカメラ。縦は固定で、横は縦横比で決める。
-/// ワールドは y 下向きで、y = 0 を画面の上端に映す。
-/// `Camera2D::from_display_rect` は画面に描くと上下が逆になるので使わない。
-fn view_camera(camera_x: f32) -> Camera2D {
-    let aspect = screen_width() / screen_height();
-    let size = vec2(VIEW_HEIGHT * aspect, VIEW_HEIGHT);
-    Camera2D {
-        target: vec2(camera_x, 0.0) + size / 2.0,
-        zoom: vec2(2.0 / size.x, 2.0 / size.y),
-        ..Default::default()
     }
 }
 
@@ -262,11 +258,11 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
     since_over >= RETRY_DELAY && (click || key_r || key_space)
 }
 
-/// 画面の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
-fn draw_offscreen_hazard(text: &Text, meters: f32) {
+/// ワールドを映す範囲の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
+fn draw_offscreen_hazard(text: &Text, meters: f32, screen: Vec2) {
     // 領域の境目の線と同じ赤。
     let color = Color::from_rgba(240, 90, 110, 255);
-    let y = screen_height() * 0.5;
+    let y = screen.y * 0.5;
     draw_rectangle(0.0, y - 26.0, 4.0, 52.0, color);
     draw_triangle(
         vec2(10.0, y),
@@ -277,15 +273,9 @@ fn draw_offscreen_hazard(text: &Text, meters: f32) {
     text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
 }
 
-fn draw_paused(text: &Text) {
-    draw_rectangle(
-        0.0,
-        0.0,
-        screen_width(),
-        screen_height(),
-        Color::from_rgba(0, 0, 0, 140),
-    );
-    let center = vec2(screen_width(), screen_height()) / 2.0;
+fn draw_paused(text: &Text, screen: Vec2) {
+    draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
+    let center = screen / 2.0;
     text.draw_centered("一時停止中", center.x, center.y - 10.0, 56.0, WHITE);
     text.draw_centered(
         "Esc かクリックで再開",
@@ -304,15 +294,9 @@ fn best_label(best: Option<u32>) -> String {
     }
 }
 
-fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str) {
-    draw_rectangle(
-        0.0,
-        0.0,
-        screen_width(),
-        screen_height(),
-        Color::from_rgba(0, 0, 0, 140),
-    );
-    let center = vec2(screen_width(), screen_height()) / 2.0;
+fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str, screen: Vec2) {
+    draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
+    let center = screen / 2.0;
     text.draw_centered("ゲームオーバー", center.x, center.y - 20.0, 56.0, WHITE);
     if let Some(reason) = game.end_reason {
         text.draw_centered(

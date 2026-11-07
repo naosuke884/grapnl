@@ -1,3 +1,4 @@
+mod daily;
 mod enemy;
 mod game;
 mod generator;
@@ -8,6 +9,7 @@ mod particles;
 mod pause;
 mod player;
 mod realtime;
+mod score_popup;
 mod sfx;
 mod shadow;
 mod shake;
@@ -166,7 +168,7 @@ async fn main() {
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now);
-        game.draw();
+        game.draw(&text);
 
         set_default_camera();
         text.draw(
@@ -334,6 +336,14 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
             Color::from_rgba(180, 190, 205, 255),
         );
     }
+    // 日替わりのコース。ゲームオーバーの画面を出している間も、毎フレーム残り時間を進める。
+    text.draw_centered_steady(
+        &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
+        center.x,
+        center.y + 142.0,
+        22.0,
+        Color::from_rgba(150, 200, 235, 255),
+    );
 }
 
 #[cfg(test)]

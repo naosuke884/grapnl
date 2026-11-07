@@ -1,3 +1,4 @@
+mod background;
 mod bgm;
 mod enemy;
 mod game;
@@ -233,6 +234,14 @@ async fn main() {
         let mut shaken = playfield.camera(game.camera_x);
         shaken.target += shake.offset();
         set_camera(&shaken);
+        // 背景の夜の街と空。揺れの分も隠れないよう、映る範囲より少し広く塗る。
+        let world_view = Rect::new(
+            game.camera_x - playfield.rect.x * game::VIEW_HEIGHT / playfield.rect.h - 200.0,
+            -200.0,
+            playfield.screen.x * game::VIEW_HEIGHT / playfield.rect.h + 400.0,
+            game::VIEW_HEIGHT + 400.0,
+        );
+        background::draw(game.seed(), world_view, game.distance(), now as f32);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(
             now,

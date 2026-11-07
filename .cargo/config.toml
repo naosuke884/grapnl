@@ -1,0 +1,5 @@
+# macroquad の audio（quad-snd 0.2.8）は、JS 側の関数を `#[link(wasm_import_module = "env")]` なしで宣言している。
+# 今の rustc（rust-lld）はそれを未定義のシンボルとしてリンクで落とすので、未定義のものは JS からの import として通す。
+# JS ローダー（web/mq_js_bundle.js）に無い関数は、読み込み時に警告付きの空の関数で埋められる。
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--allow-undefined"]

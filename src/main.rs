@@ -4,6 +4,7 @@ mod generator;
 mod level;
 mod player;
 mod realtime;
+mod sfx;
 mod shadow;
 
 use macroquad::prelude::*;
@@ -36,6 +37,8 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    // 音は始まる前に全部読み込む。
+    let sfx = sfx::Sfx::load().await;
     let mut game = Game::new();
     realtime::join(&game::room_key(game.seed()));
     let mut shadows = Shadows::default();
@@ -76,6 +79,9 @@ async fn main() {
                     boost: boost_pressed,
                 };
                 game.step(input, FIXED_DT);
+                for event in game.take_events() {
+                    sfx.play(&event);
+                }
                 wire_pressed = false;
                 boost_pressed = false;
                 accumulator -= FIXED_DT;

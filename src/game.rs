@@ -38,6 +38,24 @@ const HAZARD_MAX_SPEED: f32 = 450.0;
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
+/// 更新の中で起きたこと。音やパーティクルなど、判定に関わらない演出は `Game::events` からこれを読んで出す。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Event {
+    /// ワイヤーを撃った。刺さったときは続けて `WireAttached` も積む。
+    WireShot,
+    /// ワイヤーが天井やブロックに刺さった。値は刺さった点。
+    WireAttached(Vec2),
+    /// 刺さっていたワイヤーを手元へ戻した。
+    WirePulledBack,
+    /// ワイヤーで敵を倒した。`multiplier` はこの 1 体に掛かった連鎖の倍率。
+    EnemyKilled {
+        at: Vec2,
+        multiplier: u32,
+    },
+    Boosted,
+    GameOver,
+}
+
 /// 1 回のプレイの状態。
 pub struct Game {
     pub level: Level,
@@ -64,6 +82,8 @@ pub struct Game {
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
     pub elapsed: f32,
+    /// まだ読まれていない出来事。`step` は積むだけで消さないので、読む側が `take_events` で取り出す。
+    pub events: Vec<Event>,
 }
 
 impl Game {
@@ -103,6 +123,7 @@ impl Game {
             over: false,
             seed,
             elapsed: 0.0,
+            events: Vec::new(),
         }
     }
 
@@ -121,17 +142,34 @@ impl Game {
         // 天井やブロックに刺すか、何もない所へ撃つと連鎖が切れる。ワイヤーを戻すだけなら切れない。
         if input.pressed && self.player.can_shoot() {
             if let Some((index, point)) = self.enemy_target(input.aim) {
-                self.enemies.list.swap_remove(index);
+                let multiplier = self.next_multiplier();
+                let at = self.enemies.list.swap_remove(index).position;
                 self.kills += 1;
-                self.kill_points += KILL_POINTS * self.next_multiplier();
+                self.kill_points += KILL_POINTS * multiplier;
                 self.chain += 1;
+                self.events.push(Event::EnemyKilled { at, multiplier });
                 self.player.pull_toward(point);
                 input.pressed = false;
             } else {
                 self.chain = 0;
             }
         }
+        // ワイヤーとブーストの出来事は、自機の更新の前後の状態を比べて拾う。
+        let could_shoot = self.player.can_shoot();
+        let was_anchored = self.player.anchor.is_some();
+        let cooldown = self.player.boost_cooldown;
         self.player.update(input, &self.level, dt);
+        if input.pressed && was_anchored {
+            self.events.push(Event::WirePulledBack);
+        } else if input.pressed && could_shoot {
+            self.events.push(Event::WireShot);
+            if let Some(anchor) = self.player.anchor {
+                self.events.push(Event::WireAttached(anchor.point));
+            }
+        }
+        if self.player.boost_cooldown > cooldown {
+            self.events.push(Event::Boosted);
+        }
         self.best_x = self.best_x.max(self.player.position.x);
         let player = self.player.position;
         let front = self.best_x - FOLLOW_OFFSET;
@@ -145,7 +183,13 @@ impl Game {
         let hit = self.enemies.any_touching(player, PLAYER_HURT_RADIUS);
         if fell || hit || caught {
             self.over = true;
+            self.events.push(Event::GameOver);
         }
+    }
+
+    /// 前に取り出してから積まれた出来事を、起きた順に取り出す。
+    pub fn take_events(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.events)
     }
 
     /// `aim` の方向へ撃ったとき、地形より手前で当たる敵の番号と当たる点。
@@ -376,6 +420,54 @@ mod tests {
         // 1 + 2 + … + 5 倍と、上限に届いた後の 3 体ぶんの 5 倍。
         let expected: u32 = (1..=MAX_MULTIPLIER).sum::<u32>() + MAX_MULTIPLIER * 3;
         assert_eq!(game.kill_points, KILL_POINTS * expected);
+    }
+
+    #[test]
+    fn wire_events_follow_shoot_attach_and_pull_back() {
+        let mut game = Game::with_seed(1);
+        // 始めから刺さっているワイヤーは、撃った出来事にしない。
+        assert!(game.take_events().is_empty());
+        release_wire(&mut game);
+        assert_eq!(game.take_events(), vec![Event::WirePulledBack]);
+        shoot(&mut game, vec2(0.0, -1.0));
+        let point = game.player.anchor.unwrap().point;
+        assert_eq!(
+            game.take_events(),
+            vec![Event::WireShot, Event::WireAttached(point)]
+        );
+    }
+
+    #[test]
+    fn kill_events_carry_the_chain_multiplier() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        game.take_events();
+        for multiplier in 1..=2 {
+            place_enemy(&mut game, 300.0);
+            let at = game.enemies.list[0].position;
+            shoot(&mut game, vec2(1.0, 0.0));
+            assert_eq!(
+                game.take_events(),
+                vec![Event::EnemyKilled { at, multiplier }]
+            );
+        }
+    }
+
+    #[test]
+    fn boost_and_game_over_are_events() {
+        let mut game = Game::with_seed(1);
+        let input = WireInput {
+            boost: true,
+            ..Default::default()
+        };
+        game.step(input, DT);
+        assert_eq!(game.take_events(), vec![Event::Boosted]);
+        // 待ち時間の間は押してもブーストしない。
+        game.step(input, DT);
+        assert!(game.take_events().is_empty());
+        game.hazard_x = game.player.position.x;
+        game.step(WireInput::default(), DT);
+        assert_eq!(game.take_events(), vec![Event::GameOver]);
     }
 
     #[test]

@@ -14,6 +14,7 @@ mod sfx;
 mod shadow;
 mod shake;
 mod text;
+mod tutorial;
 mod view;
 mod volume;
 
@@ -26,6 +27,7 @@ use player::WireInput;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
+use tutorial::Tutorial;
 use view::Playfield;
 use volume::Volume;
 
@@ -72,6 +74,8 @@ async fn main() {
     let mut hit_stop = HitStop::default();
     let mut pause = Pause::default();
     let mut volume = Volume::load();
+    // 最初の数回のプレイだけ、画面下に操作の説明を吹き出しで出す。
+    let mut tutorial = Tutorial::load();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -138,6 +142,7 @@ async fn main() {
                 accumulator = 0.0;
                 since_over = 0.0;
                 hit_stop = HitStop::default();
+                tutorial.restart();
             }
             wire_pressed = false;
             boost_pressed = false;
@@ -151,6 +156,7 @@ async fn main() {
                     boost: boost_pressed,
                 };
                 game.step(input, FIXED_DT);
+                tutorial.observe(&game.events, FIXED_DT);
                 for event in &game.events {
                     sfx.play(event, volume.gain());
                     shake.kick(event);
@@ -161,6 +167,7 @@ async fn main() {
                 accumulator -= FIXED_DT;
             }
             if game.over {
+                tutorial.finish_run();
                 roommate_sdk::submit_score(game.score(), (game.elapsed * 1000.0) as u32);
             }
         }
@@ -259,6 +266,9 @@ async fn main() {
             if let Some(meters) = game.offscreen_hazard_distance() {
                 draw_offscreen_hazard(&text, meters, screen);
             }
+        }
+        if !game.over && !pause.paused() {
+            tutorial.draw(&text, screen, game.player.anchor.is_some());
         }
         if pause.paused() {
             draw_paused(&text, screen);

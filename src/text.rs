@@ -21,6 +21,11 @@ impl Text {
         Self { font }
     }
 
+    /// 描いたときの大きさ。
+    pub fn measure(&self, text: &str, font_size: f32) -> TextDimensions {
+        measure_text(text, Some(&self.font), font_size as u16, 1.0)
+    }
+
     /// `baseline_y` は文字の下端（ベースライン）の高さ。
     pub fn draw(&self, text: &str, x: f32, baseline_y: f32, font_size: f32, color: Color) {
         draw_text_ex(
@@ -197,7 +202,7 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 19] = [
+    const SOURCES: [(&str, &str); 20] = [
         ("daily.rs", include_str!("daily.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
@@ -215,6 +220,7 @@ mod tests {
         ("shadow.rs", include_str!("shadow.rs")),
         ("shake.rs", include_str!("shake.rs")),
         ("text.rs", include_str!("text.rs")),
+        ("tutorial.rs", include_str!("tutorial.rs")),
         ("view.rs", include_str!("view.rs")),
         ("volume.rs", include_str!("volume.rs")),
     ];

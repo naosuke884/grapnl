@@ -33,7 +33,7 @@
             height: calc(100% - var(--header-height));
         }
 
-        /* 名前と「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
+        /* 名前と「名前を変える」「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
         #header {
             position: fixed;
             inset: 0 0 auto 0;
@@ -58,6 +58,15 @@
             color: rgb(180, 190, 205);
             font-weight: bold;
             font-size: 13px;
+        }
+
+        #header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        #header-actions[hidden] {
+            display: none;
         }
 
         #header-note {
@@ -195,7 +204,11 @@
     <!-- ゲームの外に置く細いヘッダー。自分のデータ（匿名 ID と roommate の全ゲームのスコア）を消せる。 -->
     <header id="header">
         <span id="header-name">grapnl</span>
-        <button type="button" id="delete-open">データを消す</button>
+        <span id="header-actions">
+            <!-- ランキングに出す名前の入力欄は roommate-sdk が出す。 -->
+            <button type="button" id="name-open">名前を変える</button>
+            <button type="button" id="delete-open">データを消す</button>
+        </span>
         <span id="header-note" hidden>ページを開き直すまでスコアは記録されません</span>
     </header>
     <!-- 確認・消している間・結果を、data-state で出し分ける。 -->
@@ -287,8 +300,9 @@
             });
             function register_plugin(importObject) {
                 importObject.env.page_lost_focus = function () {
-                    // データを消すダイアログを開いている間も止めておく。
-                    var result = lost || document.hidden || (deleteDialog && deleteDialog.open);
+                    // データを消すダイアログと、名前の入力欄（roommate-sdk が出す）を開いている間も止めておく。
+                    var nameDialogOpen = window.roommate && window.roommate.isNameDialogOpen();
+                    var result = lost || document.hidden || (deleteDialog && deleteDialog.open) || nameDialogOpen;
                     lost = false;
                     return result ? 1 : 0;
                 };
@@ -324,6 +338,7 @@
             var client = window.roommate && window.roommate.client;
             var canvas = document.getElementById("glcanvas");
             var openButton = document.getElementById("delete-open");
+            var actions = document.getElementById("header-actions");
             var note = document.getElementById("header-note");
             var dialog = document.getElementById("delete-dialog");
             var title = document.getElementById("delete-title");
@@ -350,7 +365,8 @@
             }
 
             function showDone() {
-                openButton.hidden = true;
+                // 消した後は ID が無く、名前も付けられないので、「名前を変える」も隠す。
+                actions.hidden = true;
                 note.hidden = false;
                 // 消した ID のまま影の部屋に残らないよう、WebSocket を閉じ、開き直すまで繋がない。
                 if (window.grapnlRealtime) window.grapnlRealtime.stop();
@@ -379,6 +395,20 @@
             });
 
             if (client.deleteState() === "done") showDone();
+        })();
+
+        // ヘッダーの「名前を変える」。ランキングに出す名前の入力欄を roommate-sdk が出す。
+        // 名前をまだ付けていない人には、開いたときに roommate-sdk が一度だけ自動で出す。
+        // 開いている間はゲームが page_lost_focus で一時停止する。
+        (function () {
+            var nameButton = document.getElementById("name-open");
+            if (!window.roommate || !window.roommate.openNameDialog) {
+                nameButton.hidden = true;
+                return;
+            }
+            nameButton.addEventListener("click", function () {
+                window.roommate.openNameDialog();
+            });
         })();
 
         // 右クリックのブラウザメニューを出さない。

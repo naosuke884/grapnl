@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::sprites::{draw_sprite, Sprites};
+use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
 
 use crate::level::Level;
 
@@ -305,35 +305,26 @@ impl Player {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
             if self.rope.len() == ROPE_POINTS {
-                for pair in self.rope.windows(2) {
-                    draw_line(pair[0].x, pair[0].y, pair[1].x, pair[1].y, 2.0, wire_color);
+                for (i, pair) in self.rope.windows(2).enumerate() {
+                    draw_dot_line(pair[0], pair[1], wire_color, i == 0);
                 }
             } else {
-                draw_line(
-                    self.position.x,
-                    self.position.y,
-                    anchor.point.x,
-                    anchor.point.y,
-                    2.0,
-                    wire_color,
-                );
+                draw_dot_line(self.position, anchor.point, wire_color, true);
             }
-            draw_circle(anchor.point.x, anchor.point.y, 4.0, wire_color);
+            draw_sprite(&sprites.hook, anchor.point, wire_color);
         }
         if let Some((from, left)) = self.retract {
             // 戻り始めた位置から手元へ縮んでいくように描く。
             let t = (left / RETRACT_TIME).clamp(0.0, 1.0);
             let tip = self.position + (from - self.position) * t;
-            draw_line(
-                self.position.x,
-                self.position.y,
-                tip.x,
-                tip.y,
-                1.5,
+            draw_dot_line(
+                self.position,
+                tip,
                 Color {
                     a: 0.7,
                     ..wire_color
                 },
+                true,
             );
         }
         draw_sprite(&sprites.player, self.position, WHITE);

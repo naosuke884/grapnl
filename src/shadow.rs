@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use macroquad::prelude::*;
 
-use crate::sprites::{draw_sprite, Sprites};
+use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
 
 use crate::game::FALL_LIMIT_Y;
 use crate::player::{Player, MAX_WIRE_LENGTH};
@@ -224,7 +224,7 @@ impl Shadows {
         let color = Color::from_rgba(150, 170, 220, 90);
         for (position, anchor) in self.positions(now) {
             if let Some(anchor) = anchor {
-                draw_line(position.x, position.y, anchor.x, anchor.y, 1.5, color);
+                draw_dot_line(position, anchor, color, true);
             }
             // 自機と同じ絵を、青く透かして描く。
             draw_sprite(&sprites.player, position, color);

@@ -9,6 +9,7 @@ use macroquad::rand::RandGenerator;
 
 use crate::enemy::ENEMY_COLOR;
 use crate::game::Event;
+use crate::sprites::{draw_dot_line, draw_dot_square};
 
 /// 同時に存在できる粒の数。これを超えたら、残り時間が一番短い粒を上書きする。
 const MAX_PARTICLES: usize = 96;
@@ -184,33 +185,14 @@ impl Particles {
         for particle in self.alive() {
             let color = particle.color();
             match particle.kind {
+                // ドット絵に合わせ、回さずにドットの格子に揃えた四角で描く。
                 ParticleKind::Fragment => {
-                    draw_poly(
-                        particle.position.x,
-                        particle.position.y,
-                        3,
-                        particle.size,
-                        particle.angle,
-                        color,
-                    );
+                    draw_dot_square(particle.position, particle.size, color);
                 }
                 ParticleKind::Spark => {
                     let dir = particle.velocity.normalize_or_zero();
                     let end = particle.position + dir * (particle.size * 1.8);
-                    draw_line(
-                        particle.position.x,
-                        particle.position.y,
-                        end.x,
-                        end.y,
-                        2.0,
-                        color,
-                    );
-                    draw_circle(
-                        particle.position.x,
-                        particle.position.y,
-                        particle.size * 0.28,
-                        color,
-                    );
+                    draw_dot_line(particle.position, end, color, true);
                 }
             }
         }

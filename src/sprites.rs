@@ -106,6 +106,23 @@ const TILE_PALETTE: &[(char, Color)] = &[
 /// ブロックの縁。ワイヤーを刺せる面が見えるよう、明るい色で 1 ドット分囲む。
 const EDGE_COLOR: Color = Color::new(0.47, 0.71, 1.0, 1.0);
 
+/// 撃てば刺さる点に出す照準。白で描き、使うときに色を掛ける。7×7。
+const AIM: &[&str] = &[
+    "..XXX..", //
+    ".X...X.", "X.....X", "X.....X", "X.....X", ".X...X.", "..XXX..",
+];
+/// ワイヤーが届かない向きで、伸び切る所に出す ×。7×7。
+const OUT_OF_REACH: &[&str] = &[
+    "XX...XX", //
+    ".XX.XX.", "..XXX..", "...X...", "..XXX..", ".XX.XX.", "XX...XX",
+];
+/// ワイヤーの刺さった先。3×3。
+const HOOK: &[&str] = &[
+    ".X.", //
+    "XXX", ".X.",
+];
+const MARK_PALETTE: &[(char, Color)] = &[('X', WHITE)];
+
 pub struct Sprites {
     pub player: Texture2D,
     pub floater: Texture2D,
@@ -114,6 +131,9 @@ pub struct Sprites {
     /// 突進する敵が溜めている間に、明滅させる白い絵。
     pub dasher_flash: Texture2D,
     tile: Texture2D,
+    pub aim: Texture2D,
+    pub out_of_reach: Texture2D,
+    pub hook: Texture2D,
 }
 
 impl Sprites {
@@ -125,6 +145,9 @@ impl Sprites {
             dasher: texture(&image(DASHER, ENEMY_PALETTE)),
             dasher_flash: texture(&silhouette(&image(DASHER, ENEMY_PALETTE))),
             tile: texture(&image(TILE, TILE_PALETTE)),
+            aim: texture(&image(AIM, MARK_PALETTE)),
+            out_of_reach: texture(&image(OUT_OF_REACH, MARK_PALETTE)),
+            hook: texture(&image(HOOK, MARK_PALETTE)),
         }
     }
 
@@ -183,6 +206,63 @@ pub fn draw_sprite(texture: &Texture2D, center: Vec2, color: Color) {
     );
 }
 
+/// ドットの格子の上に、`a` から `b` へ 1 ドットの太さの線を描く。
+/// `with_start` が偽なら始点のドットを描かない。折れ線をつなぐとき、継ぎ目のドットを重ねて濃くしない。
+pub fn draw_dot_line(a: Vec2, b: Vec2, color: Color, with_start: bool) {
+    for (i, (x, y)) in dot_line(a, b).into_iter().enumerate() {
+        if i > 0 || with_start {
+            draw_rectangle(
+                x as f32 * SPRITE_DOT,
+                y as f32 * SPRITE_DOT,
+                SPRITE_DOT,
+                SPRITE_DOT,
+                color,
+            );
+        }
+    }
+}
+
+/// `a` から `b` までの線が通るドットの格子の番号（ブレゼンハムの方法）。始点と終点を含む。
+fn dot_line(a: Vec2, b: Vec2) -> Vec<(i32, i32)> {
+    let cell = |p: Vec2| {
+        (
+            (p.x / SPRITE_DOT).floor() as i32,
+            (p.y / SPRITE_DOT).floor() as i32,
+        )
+    };
+    let (mut x, mut y) = cell(a);
+    let (x1, y1) = cell(b);
+    let dx = (x1 - x).abs();
+    let dy = -(y1 - y).abs();
+    let sx = if x < x1 { 1 } else { -1 };
+    let sy = if y < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut cells = Vec::with_capacity((dx - dy) as usize + 1);
+    loop {
+        cells.push((x, y));
+        if x == x1 && y == y1 {
+            return cells;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+    }
+}
+
+/// 中心が `center` で、一辺が `size` に近いドットの倍数の正方形を、ドットの格子に合わせて描く。破片に使う。
+pub fn draw_dot_square(center: Vec2, size: f32, color: Color) {
+    let side = (size / SPRITE_DOT).round().max(1.0) * SPRITE_DOT;
+    let x = ((center.x - side / 2.0) / SPRITE_DOT).round() * SPRITE_DOT;
+    let y = ((center.y - side / 2.0) / SPRITE_DOT).round() * SPRITE_DOT;
+    draw_rectangle(x, y, side, side, color);
+}
+
 fn texture(image: &Image) -> Texture2D {
     let texture = Texture2D::from_image(image);
     texture.set_filter(FilterMode::Nearest);
@@ -222,7 +302,10 @@ mod tests {
     use super::*;
 
     type Palette = &'static [(char, Color)];
-    const ALL: [(&str, &[&str], Palette); 5] = [
+    const ALL: [(&str, &[&str], Palette); 8] = [
+        ("AIM", AIM, MARK_PALETTE),
+        ("OUT_OF_REACH", OUT_OF_REACH, MARK_PALETTE),
+        ("HOOK", HOOK, MARK_PALETTE),
         ("PLAYER", PLAYER, PLAYER_PALETTE),
         ("FLOATER", FLOATER, ENEMY_PALETTE),
         ("BOBBER", BOBBER, ENEMY_PALETTE),
@@ -242,6 +325,29 @@ mod tests {
                         "{name} の {y} 行目の {c:?} がパレットに無い"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn dot_lines_are_connected_and_end_where_asked() {
+        for (a, b) in [
+            (vec2(0.0, 0.0), vec2(40.0, 12.0)),
+            (vec2(30.0, 50.0), vec2(-21.0, -3.0)),
+            (vec2(5.0, 5.0), vec2(5.0, 5.0)),
+        ] {
+            let cells = dot_line(a, b);
+            assert_eq!(
+                cells[0],
+                ((a.x / 4.0).floor() as i32, (a.y / 4.0).floor() as i32)
+            );
+            assert_eq!(
+                *cells.last().unwrap(),
+                ((b.x / 4.0).floor() as i32, (b.y / 4.0).floor() as i32)
+            );
+            for pair in cells.windows(2) {
+                let (dx, dy) = (pair[1].0 - pair[0].0, pair[1].1 - pair[0].1);
+                assert!(dx.abs() <= 1 && dy.abs() <= 1 && (dx, dy) != (0, 0));
             }
         }
     }

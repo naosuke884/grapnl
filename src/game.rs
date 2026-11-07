@@ -6,8 +6,9 @@ use crate::level::Level;
 use crate::particles::Particles;
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 use crate::score_popup::Popups;
-use crate::sprites::Sprites;
+use crate::sprites::{draw_sprite, Sprites, SPRITE_DOT};
 use crate::text::Text;
+use crate::view::MAX_VIEW_WIDTH;
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
 pub const FALL_LIMIT_Y: f32 = 1800.0;
@@ -40,8 +41,6 @@ const HAZARD_START_GAP: f32 = 900.0;
 const HAZARD_START_SPEED: f32 = 120.0;
 const HAZARD_ACCELERATION: f32 = 3.0;
 const HAZARD_MAX_SPEED: f32 = 450.0;
-/// 届かない向きに出す × の半分の大きさ（ワールドの単位）。刺さる照準の円と見分けが付く大きさにする。
-const OUT_OF_REACH_MARK: f32 = 14.0;
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
@@ -308,26 +307,37 @@ impl Game {
 
     /// ワールド座標のカメラ（`VIEW_HEIGHT` を画面の高さに映す）の下で呼ぶ。
     pub fn draw(&self, text: &Text, sprites: &Sprites) {
-        // 左から迫ってくる領域。右端に明るい線を引いて、境目を分かりやすくする。
+        // 左から迫ってくる領域。右端にぎざぎざの明るい縁を付けて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
+        let edge_color = Color::from_rgba(240, 90, 110, 255);
         let hazard_left = self.hazard_x - 10_000.0;
         draw_rectangle(hazard_left, -1000.0, 10_000.0, 4000.0, hazard_color);
-        draw_line(
-            self.hazard_x,
-            -1000.0,
-            self.hazard_x,
-            3000.0,
-            4.0,
-            Color::from_rgba(240, 90, 110, 255),
-        );
-        // 落ちたら終わる高さに、横いっぱいの帯を引いて見せる。
-        draw_rectangle(
-            self.camera_x - 4000.0,
-            FALL_LIMIT_Y,
-            12_000.0,
-            200.0,
-            Color::from_rgba(120, 40, 50, 160),
-        );
+        let dot = SPRITE_DOT;
+        let edge_x = (self.hazard_x / dot).round() * dot;
+        for row in (-1000.0 / dot) as i32..(3000.0 / dot) as i32 {
+            // 太さ 2 ドットの縁を、2 ドットごとに内側へ 1 ドット出っ張らせる。縁の右端が触れたら終わる境目。
+            let width = if row.rem_euclid(4) < 2 { 3.0 } else { 2.0 };
+            draw_rectangle(
+                edge_x - width * dot,
+                row as f32 * dot,
+                width * dot,
+                dot,
+                edge_color,
+            );
+        }
+        // 落ちたら終わる高さに、横いっぱいの帯を引いて見せる。上の縁も同じくぎざぎざにし、縁の上端が境目。
+        let band_left = ((self.camera_x - 400.0) / dot).floor() * dot;
+        let band_width = MAX_VIEW_WIDTH + 800.0;
+        draw_rectangle(band_left, FALL_LIMIT_Y, band_width, 200.0, hazard_color);
+        for column in 0..(band_width / dot) as i32 {
+            let x = band_left + column as f32 * dot;
+            let height = if ((x / dot) as i32).rem_euclid(4) < 2 {
+                3.0
+            } else {
+                2.0
+            };
+            draw_rectangle(x, FALL_LIMIT_Y, dot, height * dot, edge_color);
+        }
         self.level.draw(sprites);
         self.enemies.draw(sprites);
         // ワイヤーを持っていないときは、今撃てば刺さる点（敵が手前なら敵）に照準を出す。
@@ -337,19 +347,14 @@ impl Game {
                 None => self.player.wire_target(self.aim, &self.level),
             };
             if let Some(target) = target {
-                draw_circle_lines(
-                    target.x,
-                    target.y,
-                    8.0,
-                    2.0,
-                    Color::from_rgba(255, 200, 80, 180),
-                );
+                draw_sprite(&sprites.aim, target, Color::from_rgba(255, 200, 80, 180));
             } else if let Some(end) = self.player.reach_end(self.aim) {
                 // 届かない向きでは、ワイヤーが伸び切る所に薄い × を出し、そこまでしか届かないと分かるようにする。
-                let color = Color::from_rgba(150, 160, 175, 140);
-                let d = OUT_OF_REACH_MARK;
-                draw_line(end.x - d, end.y - d, end.x + d, end.y + d, 3.0, color);
-                draw_line(end.x - d, end.y + d, end.x + d, end.y - d, 3.0, color);
+                draw_sprite(
+                    &sprites.out_of_reach,
+                    end,
+                    Color::from_rgba(150, 160, 175, 140),
+                );
             }
         }
         self.player.draw(sprites);

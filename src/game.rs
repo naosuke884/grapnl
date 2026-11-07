@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use crate::enemy::Enemies;
 use crate::generator::Generator;
 use crate::level::Level;
+use crate::particles::{Impact, Particles};
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
@@ -64,6 +65,11 @@ pub struct Game {
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
     pub elapsed: f32,
+    /// この `step` で起きた見た目のきっかけ。次の `step` の始めに空になる（`Vec` の容量は残す）。
+    /// 1 フレームに `step` が複数回走るので、画面揺れやヒットストップは `step` の直後にここを読む。
+    /// 破片もここから飛ぶ。
+    pub impacts: Vec<Impact>,
+    particles: Particles,
 }
 
 impl Game {
@@ -103,10 +109,20 @@ impl Game {
             over: false,
             seed,
             elapsed: 0.0,
+            impacts: Vec::with_capacity(4),
+            particles: Particles::new(seed),
         }
     }
 
+    /// 見た目のきっかけを残し、同じ場所から破片を出す。
+    fn emit(&mut self, impact: Impact) {
+        self.impacts.push(impact);
+        self.particles.spawn(impact);
+    }
+
     pub fn step(&mut self, mut input: WireInput, dt: f32) {
+        // 空にしても容量は残る。毎フレーム新しい `Vec` は作らない。
+        self.impacts.clear();
         if self.over {
             return;
         }
@@ -125,13 +141,24 @@ impl Game {
                 self.kills += 1;
                 self.kill_points += KILL_POINTS * self.next_multiplier();
                 self.chain += 1;
+                self.emit(Impact::EnemyKilled { at: point });
                 self.player.pull_toward(point);
                 input.pressed = false;
             } else {
                 self.chain = 0;
             }
         }
+        // この更新で「刺さっていなかった」から「刺さった」へ変わったときだけ火花を出す。
+        // 最初から刺さっている状態や、手元へ戻すだけのクリックでは出さない。
+        let was_anchored = self.player.anchor.is_some();
         self.player.update(input, &self.level, dt);
+        if let (false, Some(anchor)) = (was_anchored, self.player.anchor) {
+            let normal = (self.player.position - anchor.point).normalize_or_zero();
+            self.emit(Impact::WireStuck {
+                at: anchor.point,
+                normal,
+            });
+        }
         self.best_x = self.best_x.max(self.player.position.x);
         let player = self.player.position;
         let front = self.best_x - FOLLOW_OFFSET;
@@ -146,6 +173,7 @@ impl Game {
         if fell || hit || caught {
             self.over = true;
         }
+        self.particles.update(dt);
     }
 
     /// `aim` の方向へ撃ったとき、地形より手前で当たる敵の番号と当たる点。
@@ -215,6 +243,8 @@ impl Game {
             }
         }
         self.player.draw();
+        // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
+        self.particles.draw();
     }
 }
 
@@ -235,7 +265,8 @@ pub fn room_key(seed: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enemy::Enemy;
+    use crate::enemy::{Enemy, ENEMY_COLOR, ENEMY_RADIUS};
+    use crate::particles::{ParticleKind, FRAGMENT_COUNT, SPARK_COUNT};
 
     const DT: f32 = 1.0 / 120.0;
 
@@ -533,5 +564,105 @@ mod tests {
         // 最後が穴で終わると刺し先の右端は少し手前になるので、穴の幅の分だけ余裕を見る。
         assert!(right >= front + GENERATE_AHEAD - 1000.0);
         assert!(left >= front - KEEP_BEHIND);
+    }
+
+    #[test]
+    fn killing_an_enemy_scatters_fragments_of_its_color() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        let origin = game.player.position;
+        place_enemy(&mut game, 300.0);
+        shoot(&mut game, vec2(1.0, 0.0));
+        let at = origin + vec2(300.0 - ENEMY_RADIUS, 0.0);
+        assert_eq!(game.impacts, vec![Impact::EnemyKilled { at }]);
+        let bits: Vec<_> = game.particles.alive().collect();
+        assert_eq!(bits.len(), FRAGMENT_COUNT);
+        assert!(bits.iter().all(|p| p.kind == ParticleKind::Fragment));
+        assert!(bits.iter().all(|p| p.position.distance(at) < 15.0));
+        let color = bits[0].color();
+        assert_eq!(
+            (color.r, color.g, color.b),
+            (ENEMY_COLOR.r, ENEMY_COLOR.g, ENEMY_COLOR.b)
+        );
+        assert!(color.a > 0.5);
+
+        // 次の更新ではきっかけは空になる。飛んでいる破片はそのまま残る。
+        let capacity = game.impacts.capacity();
+        game.step(WireInput::default(), DT);
+        assert!(game.impacts.is_empty());
+        assert_eq!(game.impacts.capacity(), capacity);
+        assert!(game.particles.alive_count() > 0);
+    }
+
+    #[test]
+    fn sticking_the_wire_emits_sparks_at_the_anchor() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        game.enemies.list.clear();
+        shoot(&mut game, vec2(0.0, -1.0));
+        let anchor = game.player.anchor.unwrap();
+        let normal = (game.player.position - anchor.point).normalize_or_zero();
+        assert_eq!(
+            game.impacts,
+            vec![Impact::WireStuck {
+                at: anchor.point,
+                normal,
+            }]
+        );
+        let sparks: Vec<_> = game.particles.alive().collect();
+        assert_eq!(sparks.len(), SPARK_COUNT);
+        assert!(sparks.iter().all(|p| p.kind == ParticleKind::Spark));
+        assert!(sparks.iter().all(|p| p.velocity.dot(normal) >= -1e-3));
+        assert!(sparks
+            .iter()
+            .all(|p| p.position.distance(anchor.point) < 20.0));
+    }
+
+    #[test]
+    fn pulling_the_wire_back_or_missing_does_not_spark() {
+        let mut game = Game::with_seed(1);
+        shoot(&mut game, vec2(0.0, -1.0));
+        assert!(game.player.anchor.is_none());
+        assert!(game.impacts.is_empty());
+        assert_eq!(game.particles.alive_count(), 0);
+
+        release_wire(&mut game);
+        game.enemies.list.clear();
+        shoot(&mut game, vec2(0.0, 1.0));
+        assert!(game.player.anchor.is_none());
+        assert!(game.impacts.is_empty());
+        assert_eq!(game.particles.alive_count(), 0);
+    }
+
+    #[test]
+    fn fragments_do_not_count_as_a_hit_or_block_the_wire() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        place_enemy(&mut game, 300.0);
+        shoot(&mut game, vec2(1.0, 0.0));
+        let at = match game.impacts[0] {
+            Impact::EnemyKilled { at } => at,
+            Impact::WireStuck { .. } => panic!("倒したのに火花だけが出た"),
+        };
+        game.player.position = at;
+        game.player.velocity = Vec2::ZERO;
+        game.enemies.list.clear();
+        game.hazard_x = f32::MIN;
+        game.step(WireInput::default(), DT);
+        assert!(!game.over);
+        assert!(game.particles.alive_count() > 0);
+
+        // 破片の中から天井へ撃っても、刺さる先は地形のまま。
+        shoot(&mut game, vec2(0.0, -1.0));
+        let anchor = game.player.anchor.expect("天井に刺さる");
+        assert!(game.impacts.iter().any(|impact| matches!(
+            impact,
+            Impact::WireStuck { at, .. } if *at == anchor.point
+        )));
+        assert!(game
+            .particles
+            .alive()
+            .any(|p| p.kind == ParticleKind::Spark));
+        assert!(!game.over);
     }
 }

@@ -2,6 +2,7 @@ mod enemy;
 mod game;
 mod generator;
 mod level;
+mod particles;
 mod player;
 mod realtime;
 mod shadow;

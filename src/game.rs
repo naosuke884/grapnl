@@ -127,8 +127,7 @@ pub struct Game {
     pub hazard_x: f32,
     /// 迫ってくる領域の今の速さ。
     hazard_speed: f32,
-    pub over: bool,
-    /// 終わった理由。終わるまでは `None`。`over` が true になるのと同時に入る。
+    /// 終わった理由。終わるまでは `None`。
     pub end_reason: Option<EndReason>,
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
@@ -142,6 +141,11 @@ pub struct Game {
 }
 
 impl Game {
+    /// 終わったかどうか。終わった理由が入っていれば終わり。
+    pub fn over(&self) -> bool {
+        self.end_reason.is_some()
+    }
+
     pub fn new() -> Self {
         // 同じ日は誰がいつ遊んでも同じコースになるよう、UTC の日付から種を作る。
         // 日本時間では毎朝 9:00 に次のコースへ切り替わる。
@@ -175,7 +179,6 @@ impl Game {
             aim: start,
             hazard_x: start.x - HAZARD_START_GAP,
             hazard_speed: HAZARD_START_SPEED,
-            over: false,
             end_reason: None,
             seed,
             elapsed: 0.0,
@@ -195,7 +198,7 @@ impl Game {
     pub fn step(&mut self, mut input: WireInput, dt: f32) {
         // 空にしても容量は残る。毎フレーム新しい `Vec` は作らない。
         self.events.clear();
-        if self.over {
+        if self.over() {
             return;
         }
         self.elapsed += dt;
@@ -260,7 +263,6 @@ impl Game {
         let caught = self.player.position.x - PLAYER_RADIUS < self.hazard_x;
         let hit = self.enemies.any_touching(player, PLAYER_HURT_RADIUS);
         if let Some(reason) = EndReason::of(hit, caught, fell) {
-            self.over = true;
             self.end_reason = Some(reason);
             self.emit(Event::GameOver);
         }
@@ -419,7 +421,7 @@ mod tests {
         game.enemies.list.clear();
         game.hazard_x = f32::MIN;
         game.step(WireInput::default(), dt);
-        assert!(!game.over);
+        assert!(!game.over());
     }
 
     #[test]
@@ -646,7 +648,7 @@ mod tests {
         let mut game = Game::with_seed(1);
         place_enemy(&mut game, 0.0);
         game.step(WireInput::default(), DT);
-        assert!(game.over);
+        assert!(game.over());
         assert_eq!(game.end_reason, Some(EndReason::Enemy));
     }
 
@@ -667,7 +669,7 @@ mod tests {
         let mut game = Game::with_seed(1);
         game.hazard_x = game.player.position.x;
         game.step(WireInput::default(), DT);
-        assert!(game.over);
+        assert!(game.over());
         assert_eq!(game.end_reason, Some(EndReason::Hazard));
     }
 
@@ -690,7 +692,7 @@ mod tests {
         for _ in 0..600 {
             game.step(WireInput::default(), DT);
         }
-        assert!(game.over);
+        assert!(game.over());
         assert!(game.player.position.y > FALL_LIMIT_Y);
         assert_eq!(game.end_reason, Some(EndReason::Fell));
     }
@@ -699,7 +701,7 @@ mod tests {
     fn not_over_has_no_end_reason() {
         let mut game = Game::with_seed(1);
         game.step(WireInput::default(), DT);
-        assert!(!game.over);
+        assert!(!game.over());
         assert_eq!(game.end_reason, None);
     }
 
@@ -727,7 +729,7 @@ mod tests {
         game.player.position = vec2(0.0, 300.0);
         game.player.velocity = vec2(-500.0, 0.0);
         game.step(WireInput::default(), DT);
-        assert!(!game.over);
+        assert!(!game.over());
         assert!(game.player.position.x < 0.0);
     }
 
@@ -787,7 +789,7 @@ mod tests {
             };
             game.enemies.list.clear();
             game.step(input, DT);
-            if game.over {
+            if game.over() {
                 break;
             }
         }
@@ -919,7 +921,7 @@ mod tests {
         game.enemies.list.clear();
         game.hazard_x = f32::MIN;
         game.step(WireInput::default(), DT);
-        assert!(!game.over);
+        assert!(!game.over());
         assert!(game.particles.alive_count() > 0);
 
         // 破片の中から天井へ撃っても、刺さる先は地形のまま。
@@ -933,6 +935,6 @@ mod tests {
             .particles
             .alive()
             .any(|p| p.kind == ParticleKind::Spark));
-        assert!(!game.over);
+        assert!(!game.over());
     }
 }

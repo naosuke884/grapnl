@@ -106,7 +106,7 @@ async fn main() {
         let pointer = playfield.ui_point(mouse_position().into());
         // 右上の「MENU」ボタン。キーボードの無いスマートフォンでも止められるようにする。押してもワイヤーは撃たない。
         let on_menu_button =
-            !game.over && !pause.paused() && overlay::menu_button(screen).contains(pointer);
+            !game.over() && !pause.paused() && overlay::menu_button(screen).contains(pointer);
         wire_pressed |= left_click && !on_menu_button;
         // 一時停止の画面の音量の操作。画面の文字と同じ座標で、ポインターがどれに乗っているかを見る。
         let pause_ui = overlay::pause_layout(screen);
@@ -125,7 +125,7 @@ async fn main() {
             pause.paused() && (pause_ui.panel.frame().contains(pointer) || menu_hovered.is_some());
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
         match pause.update(
-            game.over,
+            game.over(),
             is_key_pressed(KeyCode::Escape) || (left_click && on_menu_button),
             (left_click || right_click) && !on_volume_panel && !portrait,
             // 縦長の画面では先がほとんど見えず遊べないので、横向きにするまで止めておく。
@@ -151,7 +151,7 @@ async fn main() {
                 accumulator = 0.0;
             }
         }
-        if game.over {
+        if game.over() {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             // クリックは「Retry」ボタンの上だけで受け付け、ランキングを見ているときのクリックでは始めない。
@@ -186,7 +186,7 @@ async fn main() {
         } else if !pause.paused() {
             // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
             accumulator += hit_stop.consume(frame_time);
-            while accumulator >= FIXED_DT && !game.over && !hit_stop.active() {
+            while accumulator >= FIXED_DT && !game.over() && !hit_stop.active() {
                 let input = WireInput {
                     aim,
                     pressed: wire_pressed,
@@ -200,7 +200,7 @@ async fn main() {
                 wire_pressed = false;
                 accumulator -= FIXED_DT;
             }
-            if game.over {
+            if game.over() {
                 // 送る前の自己ベストと比べる。送るとすぐ自己ベストが上がる。
                 new_best = game.score() > 0
                     && roommate_sdk::best_score().is_none_or(|best| game.score() > best);
@@ -226,7 +226,7 @@ async fn main() {
         }
         shadows.forget_stale(now);
         // 終わった後と一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over && !pause.paused() {
+        if !game.over() && !pause.paused() {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -246,11 +246,12 @@ async fn main() {
         shaken.target += shake.offset();
         set_camera(&shaken);
         // 揺れの分も隠れないよう、映る範囲より少し広く塗る。
+        let view = playfield.world_view(backdrop);
         let world_view = Rect::new(
-            backdrop.x - playfield.rect.x * world_per_pixel - 200.0,
-            backdrop.y - 200.0,
-            playfield.screen.x * world_per_pixel + 400.0,
-            playfield.world.y + 400.0,
+            view.x - 200.0,
+            view.y - 200.0,
+            view.w + 400.0,
+            view.h + 400.0,
         );
         background::draw(game.seed(), world_view, game.distance(), now as f32);
         let mut shaken = playfield.camera(origin);
@@ -285,7 +286,7 @@ async fn main() {
             Color::from_rgba(150, 160, 175, 255),
         );
         // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開くボタンだけを右上に出す。
-        if !game.over && !pause.paused() {
+        if !game.over() && !pause.paused() {
             overlay::draw_menu_button(heading, screen, pointer);
         }
         if portrait {
@@ -294,7 +295,7 @@ async fn main() {
             overlay::draw_paused(&fonts, screen, &pause_ui, pointer);
             pause_ui.panel.draw(&sprites, &volume, hovered);
         }
-        if game.over && !portrait {
+        if game.over() && !portrait {
             overlay::draw_game_over(
                 &fonts, &name_font, &game, &board, since_over, new_best, &best, pointer, screen,
             );

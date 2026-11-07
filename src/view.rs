@@ -99,6 +99,17 @@ impl Playfield {
         self.world.y / self.rect.h
     }
 
+    /// `camera(origin)` が画面全体（余白も含む）に映すワールドの範囲。
+    pub fn world_view(&self, origin: Vec2) -> Rect {
+        let world_per_pixel = self.world_per_pixel();
+        Rect::new(
+            origin.x - self.rect.x * world_per_pixel,
+            origin.y,
+            self.screen.x * world_per_pixel,
+            self.world.y,
+        )
+    }
+
     /// `rect` の左上に `origin` を映し、`rect` の高さに `world.y` を映すカメラ。
     /// カメラ自体は画面全体に映し、余白の部分は後から黒く塗って隠す（`draw_bars`）。
     /// `Camera2D::viewport` は実ピクセルで指定し、高 DPI の画面で `screen_to_world` とずれるので使わない。

@@ -99,12 +99,16 @@ async fn main() {
         let aim = camera.screen_to_world(mouse_position().into());
         let left_click = is_mouse_button_pressed(MouseButton::Left);
         let right_click = is_mouse_button_pressed(MouseButton::Right);
-        wire_pressed |= left_click;
-        // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。
-        let screen = playfield.rect.size();
+        // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。小さい画面では縮めて描く（`Playfield::ui_scale`）。
+        let screen = playfield.ui_size();
+        // スマートフォンの縦向きなど、縦長の画面。
+        let portrait = playfield.rect.w < playfield.rect.h;
+        let pointer = playfield.ui_point(mouse_position().into());
+        // 右上の「MENU」ボタン。キーボードの無いスマートフォンでも止められるようにする。押してもワイヤーは撃たない。
+        let on_menu_button = !game.over && !pause.paused() && menu_button(screen).contains(pointer);
+        wire_pressed |= left_click && !on_menu_button;
         // 一時停止の画面の音量の操作。画面の文字と同じ座標で、ポインターがどれに乗っているかを見る。
         let volume_panel = volume_panel(screen);
-        let pointer = Vec2::from(mouse_position()) - playfield.rect.point();
         let hovered = if pause.paused() {
             volume_panel.control_at(pointer)
         } else {
@@ -122,9 +126,10 @@ async fn main() {
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
         match pause.update(
             game.over,
-            is_key_pressed(KeyCode::Escape),
-            (left_click || right_click) && !on_volume_panel,
-            page::lost_focus(),
+            is_key_pressed(KeyCode::Escape) || (left_click && on_menu_button),
+            (left_click || right_click) && !on_volume_panel && !portrait,
+            // 縦長の画面では先がほとんど見えず遊べないので、横向きにするまで止めておく。
+            page::lost_focus() || portrait,
         ) {
             pause::Frame::Running => {}
             pause::Frame::Paused => {
@@ -151,9 +156,11 @@ async fn main() {
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             // クリックは「Retry」ボタンの上だけで受け付け、ランキングを見ているときのクリックでは始めない。
             let over_layout = game_over_layout(screen, &board);
-            let on_retry = over_layout.retry.contains(pointer);
+            // 縦長の画面ではゲームオーバーの画面を隠しているので、押しても何もしない。
+            let on_retry = !portrait && over_layout.retry.contains(pointer);
             // ゲームオーバーの画面にも、一時停止の画面と同じメニューのボタンを置く。
-            if let (true, Some(item)) = (left_click, menu_item_at(&over_layout.menu, pointer)) {
+            let over_item = menu_item_at(&over_layout.menu, pointer).filter(|_| !portrait);
+            if let (true, Some(item)) = (left_click, over_item) {
                 run_menu_item(item);
             }
             if retry_requested(
@@ -275,23 +282,38 @@ async fn main() {
             text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
-        // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開き方だけを右上に小さく出す。
+        // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開くボタンだけを右上に出す。
         if !game.over && !pause.paused() {
-            let hint = "Esc  Menu";
-            let width = heading.measure(hint, text::HEAD_SMALL).width;
-            heading.draw(
-                hint,
-                screen.x - 16.0 - width,
-                32.0,
+            let button = menu_button(screen);
+            let hovered = button.contains(pointer);
+            let fill = if hovered {
+                Color::from_rgba(44, 50, 64, 220)
+            } else {
+                Color::from_rgba(20, 24, 32, 170)
+            };
+            draw_rectangle(button.x, button.y, button.w, button.h, fill);
+            draw_rectangle_lines(
+                button.x,
+                button.y,
+                button.w,
+                button.h,
+                2.0,
+                Color::from_rgba(90, 98, 116, 255),
+            );
+            heading.draw_y_centered_middle(
+                "MENU",
+                button.center(),
                 text::HEAD_SMALL,
-                Color::from_rgba(150, 160, 175, 200),
+                Color::from_rgba(200, 206, 218, 255),
             );
         }
-        if pause.paused() {
+        if portrait {
+            draw_rotate_hint(&fonts, screen);
+        } else if pause.paused() {
             draw_paused(&fonts, screen, pointer);
             volume_panel.draw(&sprites, &volume, hovered);
         }
-        if game.over {
+        if game.over && !portrait {
             draw_game_over(
                 &fonts, &name_font, &game, &board, since_over, new_best, &best, pointer, screen,
             );
@@ -309,10 +331,10 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
 
 /// 一時停止の画面の真ん中に出す、遊び方の説明。キーと、その働き。遊んでいる間は出さず、ここにだけ出す。
 const CONTROLS: [(&str, &str); 4] = [
-    ("Left click", "Shoot / retract the wire"),
+    ("Click / Tap", "Shoot / retract the wire"),
     ("Wire an enemy", "Destroy it and bounce up"),
     ("Red wall", "Keeps speeding up. Run!"),
-    ("Esc", "Pause / resume"),
+    ("Esc / MENU", "Pause / resume"),
 ];
 /// 遊び方の説明の 1 行の高さ。文字は `text::MEDIUM`。
 const CONTROL_ROW: f32 = 44.0;
@@ -412,6 +434,34 @@ fn pause_layout(screen: Vec2) -> PauseLayout {
         menu,
         resume: menu_top + MENU_BUTTON.y + PAUSE_RESUME,
     }
+}
+
+/// 縦長の画面で、横向きにするよう知らせる。その間ゲームは止まっている。
+fn draw_rotate_hint(fonts: &Fonts, screen: Vec2) {
+    draw_rectangle(
+        0.0,
+        0.0,
+        screen.x,
+        screen.y,
+        Color::new(0.0, 0.0, 0.0, 0.85),
+    );
+    let center = screen / 2.0;
+    fonts
+        .heading
+        .draw_centered("ROTATE", center.x, center.y - 24.0, text::HEAD_LARGE, WHITE);
+    fonts.body.draw_centered(
+        "Turn your phone sideways to play",
+        center.x,
+        center.y + 40.0,
+        text::MEDIUM,
+        Color::from_rgba(200, 206, 218, 255),
+    );
+}
+
+/// 遊んでいる間、右上に置く「MENU」ボタン。押すと一時停止の画面を開く（Esc と同じ）。
+fn menu_button(screen: Vec2) -> Rect {
+    let size = vec2(104.0, 40.0);
+    Rect::new(screen.x - 12.0 - size.x, 10.0, size.x, size.y)
 }
 
 /// メニューのボタンを、`center_x` を中心に上端を `top` にして横に並べる。

@@ -9,6 +9,8 @@ use crate::game::VIEW_HEIGHT;
 
 /// これより横長の画面では、横幅を増やさず左右に余白を付ける。
 pub const MAX_ASPECT: f32 = 16.0 / 9.0;
+/// 画面の文字やボタンを、縮めずに描ける画面の大きさ。一時停止とゲームオーバーの画面がこれで収まる。
+pub const UI_MIN: Vec2 = vec2(820.0, 640.0);
 /// 映すワールドの横幅の上限。16:9 の画面に映す横幅（約 3300）。
 pub const MAX_VIEW_WIDTH: f32 = VIEW_HEIGHT * MAX_ASPECT;
 
@@ -64,11 +66,31 @@ impl Playfield {
         }
     }
 
-    /// 画面の文字やボタンを描くカメラ。画面の座標と同じ大きさで、`rect` の左上を原点にする。
+    /// 画面の文字やボタンを描くときの縮め方。スマートフォンのような小さい画面でも、
+    /// 一時停止やゲームオーバーの画面が収まるよう、`UI_MIN` より小さい画面では全体を縮めて描く。
+    /// 大きい画面では 1 のままにし、ドットの文字を滲ませない。
+    pub fn ui_scale(&self) -> f32 {
+        (self.rect.w / UI_MIN.x)
+            .min(self.rect.h / UI_MIN.y)
+            .min(1.0)
+    }
+
+    /// 画面の文字やボタンを描く座標での、`rect` の大きさ。
+    pub fn ui_size(&self) -> Vec2 {
+        self.rect.size() / self.ui_scale()
+    }
+
+    /// 画面の座標の点を、画面の文字やボタンを描く座標に直す。
+    pub fn ui_point(&self, point: Vec2) -> Vec2 {
+        (point - self.rect.point()) / self.ui_scale()
+    }
+
+    /// 画面の文字やボタンを描くカメラ。`rect` の左上を原点にし、`ui_scale` 倍で映す。
     pub fn hud_camera(&self) -> Camera2D {
+        let scale = self.ui_scale();
         Camera2D {
-            target: self.screen / 2.0 - self.rect.point(),
-            zoom: vec2(2.0 / self.screen.x, 2.0 / self.screen.y),
+            target: (self.screen / 2.0 - self.rect.point()) / scale,
+            zoom: vec2(2.0 * scale / self.screen.x, 2.0 * scale / self.screen.y),
             ..Default::default()
         }
     }
@@ -88,6 +110,20 @@ impl Playfield {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ui_shrinks_only_on_small_screens() {
+        assert_eq!(playfield(1280.0, 720.0).ui_scale(), 1.0);
+        assert_eq!(playfield(1024.0, 640.0).ui_scale(), 1.0);
+        // スマートフォンの横向きと縦向きは縮め、文字とボタンを置く座標では UI_MIN 以上の広さになる。
+        for (w, h) in [(844.0, 390.0), (390.0, 844.0)] {
+            let field = playfield(w, h);
+            assert!(field.ui_scale() < 1.0);
+            let size = field.ui_size();
+            assert!(size.x >= UI_MIN.x - 0.01 && size.y >= UI_MIN.y - 0.01);
+            assert_eq!(field.ui_point(field.rect.point()), Vec2::ZERO);
+        }
+    }
 
     fn assert_close(a: f32, b: f32) {
         assert!((a - b).abs() < 1e-3, "{a} != {b}");

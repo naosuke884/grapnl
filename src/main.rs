@@ -111,9 +111,7 @@ async fn main() {
         // 音量の囲みと、メニューのボタンの上のクリックでは再開しない。
         let menu = pause_layout(screen).menu;
         let menu_hovered = if pause.paused() {
-            menu.iter()
-                .find(|(_, rect)| rect.contains(pointer))
-                .map(|(item, _)| *item)
+            menu_item_at(&menu, pointer)
         } else {
             None
         };
@@ -128,13 +126,8 @@ async fn main() {
         ) {
             pause::Frame::Running => {}
             pause::Frame::Paused => {
-                if left_click {
-                    match menu_hovered {
-                        Some(MenuItem::ChangeName) => roommate_sdk::open_name_dialog(),
-                        Some(MenuItem::DeleteData) => page::open_delete_dialog(),
-                        Some(MenuItem::BackToSite) => page::go_to_site(),
-                        None => {}
-                    }
+                if let (true, Some(item)) = (left_click, menu_hovered) {
+                    run_menu_item(item);
                 }
                 volume.update(
                     is_key_pressed(KeyCode::Left),
@@ -155,7 +148,12 @@ async fn main() {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             // クリックは「Retry」ボタンの上だけで受け付け、ランキングを見ているときのクリックでは始めない。
-            let on_retry = game_over_layout(screen, &board).retry.contains(pointer);
+            let over_layout = game_over_layout(screen, &board);
+            let on_retry = over_layout.retry.contains(pointer);
+            // ゲームオーバーの画面にも、一時停止の画面と同じメニューのボタンを置く。
+            if let (true, Some(item)) = (left_click, menu_item_at(&over_layout.menu, pointer)) {
+                run_menu_item(item);
+            }
             if retry_requested(
                 since_over,
                 left_click && on_retry,
@@ -418,16 +416,7 @@ fn pause_layout(screen: Vec2) -> PauseLayout {
     let panel = volume::Panel::new(center_x, controls.bottom() + PAUSE_PANEL_GAP - probe.y);
     let volume_keys = panel.frame().bottom() + PAUSE_VOLUME_KEYS;
     let menu_top = volume_keys + PAUSE_MENU_GAP;
-    let count = MenuItem::ALL.len() as f32;
-    let menu_left = center_x - (MENU_BUTTON.x * count + MENU_GAP * (count - 1.0)) / 2.0;
-    let menu = MenuItem::ALL.map(|item| {
-        let i = MenuItem::ALL
-            .iter()
-            .position(|&other| other == item)
-            .unwrap_or(0) as f32;
-        let x = menu_left + i * (MENU_BUTTON.x + MENU_GAP);
-        (item, Rect::new(x, menu_top, MENU_BUTTON.x, MENU_BUTTON.y))
-    });
+    let menu = menu_row(center_x, menu_top);
     PauseLayout {
         title,
         controls,
@@ -435,6 +424,71 @@ fn pause_layout(screen: Vec2) -> PauseLayout {
         volume_keys,
         menu,
         resume: menu_top + MENU_BUTTON.y + PAUSE_RESUME,
+    }
+}
+
+/// メニューのボタンを、`center_x` を中心に上端を `top` にして横に並べる。
+fn menu_row(center_x: f32, top: f32) -> [(MenuItem, Rect); 3] {
+    let count = MenuItem::ALL.len() as f32;
+    let left = center_x - (MENU_BUTTON.x * count + MENU_GAP * (count - 1.0)) / 2.0;
+    let mut i = 0.0;
+    MenuItem::ALL.map(|item| {
+        let x = left + i * (MENU_BUTTON.x + MENU_GAP);
+        i += 1.0;
+        (item, Rect::new(x, top, MENU_BUTTON.x, MENU_BUTTON.y))
+    })
+}
+
+/// `pointer` が乗っているメニューのボタン。
+fn menu_item_at(menu: &[(MenuItem, Rect); 3], pointer: Vec2) -> Option<MenuItem> {
+    let deleted = page::data_deleted();
+    menu.iter()
+        .filter(|(item, _)| !deleted || *item == MenuItem::BackToSite)
+        .find(|(_, rect)| rect.contains(pointer))
+        .map(|(item, _)| *item)
+}
+
+fn run_menu_item(item: MenuItem) {
+    match item {
+        MenuItem::ChangeName => roommate_sdk::open_name_dialog(),
+        MenuItem::DeleteData => page::open_delete_dialog(),
+        MenuItem::BackToSite => page::go_to_site(),
+    }
+}
+
+/// メニューのボタンを描く。データを消した後は、名前と消すボタンの代わりにそのことを知らせる。
+fn draw_menu(text: &Text, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
+    let deleted = page::data_deleted();
+    for &(item, rect) in menu {
+        if deleted && item != MenuItem::BackToSite {
+            continue;
+        }
+        let hovered = rect.contains(pointer);
+        let (fill, border) = match (item, hovered) {
+            (MenuItem::DeleteData, true) => (
+                Color::from_rgba(70, 32, 38, 255),
+                Color::from_rgba(200, 90, 100, 255),
+            ),
+            (_, true) => (Color::from_rgba(44, 50, 64, 255), WHITE),
+            (_, false) => (
+                Color::from_rgba(28, 32, 42, 255),
+                Color::from_rgba(70, 78, 96, 255),
+            ),
+        };
+        draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
+        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, border);
+        text.draw_y_centered_middle(item.label(), rect.center(), text::SMALL, WHITE);
+    }
+    if deleted {
+        let first = menu[0].1;
+        let second = menu[1].1;
+        text.draw_centered(
+            "Your data was deleted. Scores won't be saved until you reload.",
+            (first.x + second.right()) / 2.0,
+            first.center().y + 6.0,
+            text::SMALL,
+            Color::from_rgba(255, 204, 90, 255),
+        );
     }
 }
 
@@ -493,38 +547,7 @@ fn draw_paused(text: &Text, screen: Vec2, pointer: Vec2) {
         Color::from_rgba(150, 160, 175, 255),
     );
     // データを消した後は、名前も消すものも無いので、そのことだけ知らせてサイトへ戻るボタンを残す。
-    let deleted = page::data_deleted();
-    for (item, rect) in layout.menu {
-        if deleted && item != MenuItem::BackToSite {
-            continue;
-        }
-        let hovered = rect.contains(pointer);
-        let (fill, border) = match (item, hovered) {
-            (MenuItem::DeleteData, true) => (
-                Color::from_rgba(70, 32, 38, 255),
-                Color::from_rgba(200, 90, 100, 255),
-            ),
-            (_, true) => (Color::from_rgba(44, 50, 64, 255), WHITE),
-            (_, false) => (
-                Color::from_rgba(28, 32, 42, 255),
-                Color::from_rgba(70, 78, 96, 255),
-            ),
-        };
-        draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
-        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, border);
-        text.draw_y_centered_middle(item.label(), rect.center(), text::SMALL, WHITE);
-    }
-    if deleted {
-        let first = layout.menu[0].1;
-        let second = layout.menu[1].1;
-        text.draw_centered(
-            "Your data was deleted. Scores won't be saved until you reload.",
-            (first.x + second.right()) / 2.0,
-            first.center().y + 6.0,
-            text::SMALL,
-            Color::from_rgba(255, 204, 90, 255),
-        );
-    }
+    draw_menu(text, &layout.menu, pointer);
     text.draw_centered(
         "Click or Esc to resume",
         center_x,
@@ -560,6 +583,8 @@ const RANKING_PAD: Vec2 = vec2(40.0, 22.0);
 /// ランキングの表の下端から、「Retry」ボタンの上端まで。
 const OVER_RETRY_GAP: f32 = 48.0;
 const RETRY_SIZE: Vec2 = vec2(200.0, 52.0);
+/// 「Retry」ボタンの下端から、メニューのボタンの上端まで。
+const OVER_MENU_GAP: f32 = 24.0;
 /// 画面の上下に残す余白。
 const OVER_MARGIN: f32 = 16.0;
 
@@ -572,6 +597,8 @@ fn game_over_fixed_height() -> f32 {
         + OVER_RANKING_GAP
         + OVER_RETRY_GAP
         + RETRY_SIZE.y
+        + OVER_MENU_GAP
+        + MENU_BUTTON.y
 }
 
 /// 画面の高さに収まる、ランキングの上位の行数。
@@ -587,6 +614,7 @@ struct GameOverLayout {
     /// ランキングの上位の行数。
     rows: usize,
     retry: Rect,
+    menu: [(MenuItem, Rect); 3],
 }
 
 fn game_over_layout(screen: Vec2, board: &Board) -> GameOverLayout {
@@ -596,7 +624,8 @@ fn game_over_layout(screen: Vec2, board: &Board) -> GameOverLayout {
     let full = game_over_fixed_height() + Board::height(rows);
     let top = ((screen.y - full) / 2.0).max(OVER_MARGIN);
     // 行が少ないときは表を縮め、「Retry」ボタンを上へ詰める。
-    let retry_top = top + game_over_fixed_height() + board.used_height(rows) - RETRY_SIZE.y;
+    let menu_top = top + game_over_fixed_height() + board.used_height(rows) - MENU_BUTTON.y;
+    let retry_top = menu_top - OVER_MENU_GAP - RETRY_SIZE.y;
     GameOverLayout {
         top,
         rows,
@@ -606,6 +635,7 @@ fn game_over_layout(screen: Vec2, board: &Board) -> GameOverLayout {
             RETRY_SIZE.x,
             RETRY_SIZE.y,
         ),
+        menu: menu_row(screen.x / 2.0, menu_top),
     }
 }
 
@@ -676,6 +706,7 @@ fn draw_game_over(
     );
     board.draw(text, names, center_x, y, layout.rows);
     draw_retry_button(text, layout.retry, since_over >= RETRY_DELAY, pointer);
+    draw_menu(text, &layout.menu, pointer);
 }
 
 /// 「Retry」ボタン。終わった直後の `RETRY_DELAY` の間は暗くして、押せないことを見せる。
@@ -712,21 +743,22 @@ mod tests {
     }
 
     #[test]
-    fn retry_button_sits_below_the_ranking_on_screen() {
-        for height in [720.0, 520.0] {
+    fn retry_and_menu_sit_below_the_ranking_on_screen() {
+        for height in [720.0, 600.0] {
             let screen = vec2(1280.0, height);
             let layout = game_over_layout(screen, &Board::default());
-            assert!(layout.retry.bottom() <= height);
-            assert!(layout.retry.y >= layout.top + game_over_fixed_height() - RETRY_SIZE.y);
+            let menu_top = layout.menu[0].1.y;
+            assert!((layout.retry.bottom() + OVER_MENU_GAP - menu_top).abs() < 1e-3);
+            assert!(layout.menu[0].1.bottom() <= height);
         }
     }
 
     #[test]
     fn game_over_fits_the_screen() {
         assert_eq!(ranking_rows(720.0), ranking::MAX_ROWS);
-        let rows = ranking_rows(480.0);
+        let rows = ranking_rows(600.0);
         assert!(rows < ranking::MAX_ROWS);
-        assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 480.0);
+        assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 600.0);
         assert_eq!(ranking_rows(100.0), 0);
     }
 

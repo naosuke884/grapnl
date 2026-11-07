@@ -278,12 +278,6 @@ async fn main() {
                 Color::from_rgba(255, 200, 80, 255),
             );
         }
-        // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
-        if !game.over {
-            if let Some(meters) = game.offscreen_hazard_distance() {
-                draw_offscreen_hazard(&text, meters, screen);
-            }
-        }
         if !game.over && !pause.paused() {
             tutorial.draw(&text, screen, game.player.anchor.is_some());
         }
@@ -303,21 +297,6 @@ async fn main() {
 /// 終わった直後の `RETRY_DELAY` の間は、どの入力も受け付けない。
 fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -> bool {
     since_over >= RETRY_DELAY && (click || key_r || key_space)
-}
-
-/// ワールドを映す範囲の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
-fn draw_offscreen_hazard(text: &Text, meters: f32, screen: Vec2) {
-    // 領域の境目の線と同じ赤。
-    let color = Color::from_rgba(240, 90, 110, 255);
-    let y = screen.y * 0.5;
-    draw_rectangle(0.0, y - 26.0, 4.0, 52.0, color);
-    draw_triangle(
-        vec2(10.0, y),
-        vec2(26.0, y - 12.0),
-        vec2(26.0, y + 12.0),
-        color,
-    );
-    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, text::MEDIUM, color);
 }
 
 fn draw_paused(text: &Text, screen: Vec2) {

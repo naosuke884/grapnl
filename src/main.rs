@@ -95,7 +95,7 @@ async fn main() {
         shake.update(frame_time);
         // 16:9 より横長の画面では、ワールドを中央の 16:9 の範囲に映す。
         let playfield = Playfield::current();
-        let camera = playfield.camera(game.camera_x);
+        let camera = playfield.camera(playfield.origin(game.camera_x, game.player.position));
         let aim = camera.screen_to_world(mouse_position().into());
         let left_click = is_mouse_button_pressed(MouseButton::Left);
         let right_click = is_mouse_button_pressed(MouseButton::Right);
@@ -238,26 +238,27 @@ async fn main() {
         clear_background(Color::from_rgba(16, 18, 24, 255));
 
         // 揺れは描画用のカメラだけに足す。照準は揺れていない `camera` で変換する。
-        let mut shaken = playfield.camera(game.camera_x);
+        let origin = playfield.origin(game.camera_x, game.player.position);
+        let world_per_pixel = playfield.world_per_pixel();
+        // 背景の夜の街と空は、寄って縦を追うときも上下に動かさず、街の下端を画面の下端に映す。
+        let backdrop = vec2(origin.x, game::VIEW_HEIGHT - playfield.world.y);
+        let mut shaken = playfield.camera(backdrop);
         shaken.target += shake.offset();
         set_camera(&shaken);
-        // 背景の夜の街と空。揺れの分も隠れないよう、映る範囲より少し広く塗る。
+        // 揺れの分も隠れないよう、映る範囲より少し広く塗る。
         let world_view = Rect::new(
-            game.camera_x - playfield.rect.x * game::VIEW_HEIGHT / playfield.rect.h - 200.0,
-            -200.0,
-            playfield.screen.x * game::VIEW_HEIGHT / playfield.rect.h + 400.0,
-            game::VIEW_HEIGHT + 400.0,
+            backdrop.x - playfield.rect.x * world_per_pixel - 200.0,
+            backdrop.y - 200.0,
+            playfield.screen.x * world_per_pixel + 400.0,
+            playfield.world.y + 400.0,
         );
         background::draw(game.seed(), world_view, game.distance(), now as f32);
+        let mut shaken = playfield.camera(origin);
+        shaken.target += shake.offset();
+        set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
-        shadows.draw(
-            now,
-            &sprites,
-            &fonts,
-            &name_font,
-            game::VIEW_HEIGHT / screen_height(),
-        );
-        game.draw(heading, &sprites);
+        shadows.draw(now, &sprites, &fonts, &name_font, world_per_pixel);
+        game.draw(heading, &sprites, world_per_pixel);
 
         set_default_camera();
         // ワールドを映す範囲の外は黒く塗り、横長の画面でも先が見える幅を変えない。

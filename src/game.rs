@@ -295,8 +295,8 @@ impl Game {
         (self.best_x - self.start_x) / UNITS_PER_METER
     }
 
-    /// ワールド座標のカメラ（`VIEW_HEIGHT` を画面の高さに映す）の下で呼ぶ。
-    pub fn draw(&self, text: &Text, sprites: &Sprites) {
+    /// ワールド座標のカメラの下で呼ぶ。`world_per_pixel` は画面の 1 ピクセルに映るワールドの幅。
+    pub fn draw(&self, text: &Text, sprites: &Sprites, world_per_pixel: f32) {
         // 左から迫ってくる領域。右端にぎざぎざの明るい縁を付けて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
         let edge_color = Color::from_rgba(240, 90, 110, 255);
@@ -353,7 +353,7 @@ impl Game {
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();
         // 入った得点は破片より手前に出し、何点入ったかを読めるようにする。
-        self.popups.draw(text, VIEW_HEIGHT / screen_height());
+        self.popups.draw(text, world_per_pixel);
     }
 }
 

@@ -147,7 +147,7 @@
     <!-- id="glcanvas" は macroquad の JS ローダーが必須としている名前。
          ローダーは window.onresize で clientWidth / clientHeight を読み、
          描画バッファをブラウザの表示サイズに合わせる。 -->
-    <canvas id="glcanvas" tabindex="1" oncontextmenu="event.preventDefault()"></canvas>
+    <canvas id="glcanvas" tabindex="1"></canvas>
     <!-- 確認・消している間・結果を、data-state で出し分ける。 -->
     <dialog id="delete-dialog" aria-labelledby="delete-title" data-state="confirm">
         <!-- 消している間と結果は、見出しを書き換えて伝える。 -->
@@ -337,12 +337,6 @@
             if (client.deleteState() === "done") showDone();
         })();
 
-
-        // 右クリックのブラウザメニューを出さない。
-        // preventDefault は contextmenu だけを止め、mousedown / mouseup はローダーへ届く。
-        document.addEventListener("contextmenu", function (event) {
-            event.preventDefault();
-        });
 
         // ゲームの最初のフレームは gl.clear で画面を塗り始める。
         // clear の時点ではそのフレームの残りをまだ描いているので、

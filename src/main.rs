@@ -7,6 +7,7 @@ mod player;
 mod realtime;
 mod sfx;
 mod shadow;
+mod shake;
 mod text;
 
 use macroquad::prelude::*;
@@ -14,13 +15,14 @@ use macroquad::prelude::*;
 use game::{Game, VIEW_HEIGHT};
 use player::WireInput;
 use shadow::{Shadows, State};
+use shake::Shake;
 use text::Text;
 
 /// 更新は固定の刻みで回し、画面のリフレッシュレートで手触りが変わらないようにする。
 const FIXED_DT: f32 = 1.0 / 120.0;
 /// 処理落ちしたときに 1 フレームで追いつく上限。これを超えた分は捨ててゲームを遅らせる。
 const MAX_FRAME_TIME: f32 = 0.1;
-/// ゲームオーバー直後のクリックでうっかりやり直さないよう、受け付けない時間。
+/// ゲームオーバー直後の操作でうっかりやり直さないよう、受け付けない時間。
 const RETRY_DELAY: f32 = 0.6;
 
 fn window_conf() -> Conf {
@@ -56,16 +58,25 @@ async fn main() {
     // クリックは描画フレームで受け、次に回る固定刻みの更新で 1 回だけ使う。
     let mut wire_pressed = false;
     let mut boost_pressed = false;
+    let mut shake = Shake::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
+        // このフレームの出来事で揺らし始めた分は、減らす前に描けるよう先に進める。
+        shake.update(frame_time);
         let camera = view_camera(game.camera_x);
         let aim = camera.screen_to_world(mouse_position().into());
         wire_pressed |= is_mouse_button_pressed(MouseButton::Left);
         boost_pressed |= is_mouse_button_pressed(MouseButton::Right);
         if game.over {
             since_over += frame_time;
-            if since_over >= RETRY_DELAY && is_mouse_button_pressed(MouseButton::Left) {
+            // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
+            if retry_requested(
+                since_over,
+                is_mouse_button_pressed(MouseButton::Left),
+                is_key_pressed(KeyCode::R),
+                is_key_pressed(KeyCode::Space),
+            ) {
                 game = Game::new();
                 // 日付が変わっていれば、新しいコースの部屋へ移る。
                 realtime::join(&game::room_key(game.seed()));
@@ -85,6 +96,7 @@ async fn main() {
                 game.step(input, FIXED_DT);
                 for event in &game.events {
                     sfx.play(event);
+                    shake.kick(event);
                 }
                 wire_pressed = false;
                 boost_pressed = false;
@@ -115,7 +127,10 @@ async fn main() {
 
         clear_background(Color::from_rgba(16, 18, 24, 255));
 
-        set_camera(&view_camera(game.camera_x));
+        // 揺れは描画用のカメラだけに足す。照準は揺れていない `camera` で変換する。
+        let mut shaken = view_camera(game.camera_x);
+        shaken.target += shake.offset();
+        set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now);
         game.draw();
@@ -176,6 +191,12 @@ async fn main() {
                 Color::from_rgba(255, 200, 80, 255),
             );
         }
+        // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
+        if !game.over {
+            if let Some(meters) = game.offscreen_hazard_distance() {
+                draw_offscreen_hazard(&text, meters);
+            }
+        }
         if game.over {
             draw_game_over(&text, &game, since_over, high_score);
         }
@@ -195,6 +216,27 @@ fn view_camera(camera_x: f32) -> Camera2D {
         zoom: vec2(2.0 / size.x, 2.0 / size.y),
         ..Default::default()
     }
+}
+
+/// 左クリック、R、スペースのどれかでやり直す。
+/// 終わった直後の `RETRY_DELAY` の間は、どの入力も受け付けない。
+fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -> bool {
+    since_over >= RETRY_DELAY && (click || key_r || key_space)
+}
+
+/// 画面の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
+fn draw_offscreen_hazard(text: &Text, meters: f32) {
+    // 領域の境目の線と同じ赤。
+    let color = Color::from_rgba(240, 90, 110, 255);
+    let y = screen_height() * 0.5;
+    draw_rectangle(0.0, y - 26.0, 4.0, 52.0, color);
+    draw_triangle(
+        vec2(10.0, y),
+        vec2(26.0, y - 12.0),
+        vec2(26.0, y + 12.0),
+        color,
+    );
+    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
 }
 
 fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
@@ -230,11 +272,33 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
     );
     if since_over >= RETRY_DELAY {
         text.draw_centered(
-            "クリックでもう一度",
+            "クリックか R かスペースでもう一度",
             center.x,
             center.y + 102.0,
             24.0,
             Color::from_rgba(180, 190, 205, 255),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_ignores_input_during_the_delay() {
+        let just_before = RETRY_DELAY - 0.01;
+        assert!(!retry_requested(0.0, true, true, true));
+        assert!(!retry_requested(just_before, true, false, false));
+        assert!(!retry_requested(just_before, false, true, false));
+        assert!(!retry_requested(just_before, false, false, true));
+    }
+
+    #[test]
+    fn retry_accepts_click_r_or_space_after_the_delay() {
+        assert!(retry_requested(RETRY_DELAY, true, false, false));
+        assert!(retry_requested(RETRY_DELAY, false, true, false));
+        assert!(retry_requested(RETRY_DELAY, false, false, true));
+        assert!(!retry_requested(RETRY_DELAY + 1.0, false, false, false));
     }
 }

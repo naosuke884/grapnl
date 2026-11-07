@@ -286,6 +286,16 @@ impl Game {
         (self.best_x - self.start_x) / UNITS_PER_METER
     }
 
+    /// 迫ってくる領域が画面の左端より外にあるとき、自機に触れるまでの距離（m）。
+    /// 境目が画面に映っているときは `None`。見えないあいだ、左端にこの距離を出す。
+    pub fn offscreen_hazard_distance(&self) -> Option<f32> {
+        if self.hazard_x >= self.camera_x {
+            return None;
+        }
+        let world = self.player.position.x - PLAYER_RADIUS - self.hazard_x;
+        Some((world / UNITS_PER_METER).max(0.0))
+    }
+
     pub fn draw(&self) {
         // 左から迫ってくる領域。右端に明るい線を引いて、境目を分かりやすくする。
         let hazard_color = Color::from_rgba(120, 40, 50, 160);
@@ -652,6 +662,33 @@ mod tests {
         game.step(WireInput::default(), DT);
         assert!(game.over);
         assert_eq!(game.end_reason, Some(EndReason::Hazard));
+    }
+
+    #[test]
+    fn offscreen_hazard_distance_is_the_gap_until_it_touches_the_player() {
+        let mut game = Game::with_seed(1);
+        // 開始時は赤い領域の境目が画面の左に映っている。
+        assert!(game.hazard_x > game.camera_x);
+        assert!(game.offscreen_hazard_distance().is_none());
+
+        game.player.position.x = 8_000.0;
+        game.camera_x = game.player.position.x - FOLLOW_OFFSET;
+        let meters = game.offscreen_hazard_distance().unwrap();
+        let world = game.player.position.x - PLAYER_RADIUS - game.hazard_x;
+        assert!((meters - world / UNITS_PER_METER).abs() < 1e-4);
+
+        // 領域が近づくほど、出している距離は短くなる。
+        let before = meters;
+        game.hazard_x += 500.0;
+        assert!(game.hazard_x < game.camera_x);
+        let closer = game.offscreen_hazard_distance().unwrap();
+        assert!((before - closer - 500.0 / UNITS_PER_METER).abs() < 1e-4);
+
+        // 境目が画面の左端まで戻ったら、赤い領域自体が見えるので距離は出さない。
+        game.hazard_x = game.camera_x;
+        assert!(game.offscreen_hazard_distance().is_none());
+        game.hazard_x = game.camera_x + 10.0;
+        assert!(game.offscreen_hazard_distance().is_none());
     }
 
     #[test]

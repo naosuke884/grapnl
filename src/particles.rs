@@ -8,6 +8,7 @@ use macroquad::prelude::*;
 use macroquad::rand::RandGenerator;
 
 use crate::enemy::ENEMY_COLOR;
+use crate::game::Event;
 
 /// 同時に存在できる粒の数。これを超えたら、残り時間が一番短い粒を上書きする。
 const MAX_PARTICLES: usize = 96;
@@ -24,16 +25,6 @@ const SPARK_COLOR: Color = Color {
     b: 150.0 / 255.0,
     a: 1.0,
 };
-
-/// 1 回の更新で起きた、見た目のきっかけ。
-/// 判定には使わない。画面揺れやヒットストップも、同じ値を見て始める。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Impact {
-    /// 敵を倒した場所。
-    EnemyKilled { at: Vec2 },
-    /// ワイヤーが地形に刺さった点と、地形の外（自機の側）へ向く向き。
-    WireStuck { at: Vec2, normal: Vec2 },
-}
 
 /// 破片の種類。色と消え方はここから決まる。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,11 +101,13 @@ impl Particles {
         }
     }
 
-    /// `impact` の場所から破片を出す。死んでいる枠があればそこを上書きする。
-    pub fn spawn(&mut self, impact: Impact) {
-        match impact {
-            Impact::EnemyKilled { at } => self.burst(at, ParticleKind::Fragment, Vec2::ZERO),
-            Impact::WireStuck { at, normal } => self.burst(at, ParticleKind::Spark, normal),
+    /// 敵を倒した・ワイヤーが刺さった場所から破片を出す。ほかの出来事では何もしない。
+    /// 死んでいる枠があればそこを上書きする。
+    pub fn spawn(&mut self, event: Event) {
+        match event {
+            Event::EnemyKilled { at, .. } => self.burst(at, ParticleKind::Fragment, Vec2::ZERO),
+            Event::WireAttached { at, normal } => self.burst(at, ParticleKind::Spark, normal),
+            _ => {}
         }
     }
 
@@ -244,7 +237,7 @@ mod tests {
     fn fragments_scatter_outward_then_fall_and_disappear() {
         let mut particles = Particles::new(1);
         let at = vec2(100.0, 200.0);
-        particles.spawn(Impact::EnemyKilled { at });
+        particles.spawn(Event::EnemyKilled { at, multiplier: 1 });
         assert_eq!(particles.alive_count(), FRAGMENT_COUNT);
         assert!(particles
             .alive()
@@ -283,7 +276,7 @@ mod tests {
     fn sparks_leave_along_the_normal_and_fade_before_fragments() {
         let mut sparks = Particles::new(2);
         let normal = vec2(0.0, 1.0);
-        sparks.spawn(Impact::WireStuck {
+        sparks.spawn(Event::WireAttached {
             at: Vec2::ZERO,
             normal,
         });
@@ -296,7 +289,10 @@ mod tests {
         assert_ne!(spark_color.g, ENEMY_COLOR.g);
 
         let mut fragments = Particles::new(2);
-        fragments.spawn(Impact::EnemyKilled { at: Vec2::ZERO });
+        fragments.spawn(Event::EnemyKilled {
+            at: Vec2::ZERO,
+            multiplier: 1,
+        });
         let fragment_color = fragments.alive().next().unwrap().color();
         assert_eq!(fragment_color.r, ENEMY_COLOR.r);
         assert_eq!(fragment_color.g, ENEMY_COLOR.g);
@@ -314,7 +310,10 @@ mod tests {
     fn slots_and_capacity_are_reused_across_bursts() {
         let mut particles = Particles::new(3);
         let capacity = particles.capacity();
-        particles.spawn(Impact::EnemyKilled { at: Vec2::ZERO });
+        particles.spawn(Event::EnemyKilled {
+            at: Vec2::ZERO,
+            multiplier: 1,
+        });
         let slots = particles.slot_count();
         assert!(slots <= MAX_PARTICLES);
         assert_eq!(particles.capacity(), capacity);
@@ -324,8 +323,9 @@ mod tests {
                 particles.update(DT);
             }
             assert_eq!(particles.alive_count(), 0);
-            particles.spawn(Impact::EnemyKilled {
+            particles.spawn(Event::EnemyKilled {
                 at: vec2(10.0, 0.0),
+                multiplier: 1,
             });
             assert_eq!(particles.slot_count(), slots);
             assert_eq!(particles.capacity(), capacity);
@@ -333,7 +333,10 @@ mod tests {
 
         // 死んだ枠が足りないときは上限まで増やす。超えた分は空きを上書きし、容量は増えない。
         for _ in 0..20 {
-            particles.spawn(Impact::EnemyKilled { at: Vec2::ZERO });
+            particles.spawn(Event::EnemyKilled {
+                at: Vec2::ZERO,
+                multiplier: 1,
+            });
         }
         assert_eq!(particles.slot_count(), MAX_PARTICLES);
         assert_eq!(particles.capacity(), capacity);

@@ -3,7 +3,7 @@ use macroquad::prelude::*;
 use crate::enemy::Enemies;
 use crate::generator::Generator;
 use crate::level::Level;
-use crate::particles::{Impact, Particles};
+use crate::particles::Particles;
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
@@ -39,6 +39,27 @@ const HAZARD_MAX_SPEED: f32 = 450.0;
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
+/// 更新の中で起きたこと。音やパーティクルなど、判定に関わらない演出は `Game::events` からこれを読んで出す。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Event {
+    /// ワイヤーを撃った。刺さったときは続けて `WireAttached` も積む。
+    WireShot,
+    /// ワイヤーが天井やブロックに刺さった。`at` は刺さった点、`normal` は地形の外（自機の側）へ向く向き。
+    WireAttached {
+        at: Vec2,
+        normal: Vec2,
+    },
+    /// 刺さっていたワイヤーを手元へ戻した。
+    WirePulledBack,
+    /// ワイヤーで敵を倒した。`at` はワイヤーが敵に当たった点、`multiplier` はこの 1 体に掛かった連鎖の倍率。
+    EnemyKilled {
+        at: Vec2,
+        multiplier: u32,
+    },
+    Boosted,
+    GameOver,
+}
+
 /// 1 回のプレイの状態。
 pub struct Game {
     pub level: Level,
@@ -65,10 +86,10 @@ pub struct Game {
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
     pub elapsed: f32,
-    /// この `step` で起きた見た目のきっかけ。次の `step` の始めに空になる（`Vec` の容量は残す）。
-    /// 1 フレームに `step` が複数回走るので、画面揺れやヒットストップは `step` の直後にここを読む。
+    /// この `step` で起きた出来事。次の `step` の始めに空になる（`Vec` の容量は残す）。
+    /// 1 フレームに `step` が複数回走るので、音や画面揺れは `step` の直後にここを読む。
     /// 破片もここから飛ぶ。
-    pub impacts: Vec<Impact>,
+    pub events: Vec<Event>,
     particles: Particles,
 }
 
@@ -109,20 +130,20 @@ impl Game {
             over: false,
             seed,
             elapsed: 0.0,
-            impacts: Vec::with_capacity(4),
+            events: Vec::with_capacity(8),
             particles: Particles::new(seed),
         }
     }
 
-    /// 見た目のきっかけを残し、同じ場所から破片を出す。
-    fn emit(&mut self, impact: Impact) {
-        self.impacts.push(impact);
-        self.particles.spawn(impact);
+    /// 出来事を残し、破片を出すものなら同じ場所から出す。
+    fn emit(&mut self, event: Event) {
+        self.events.push(event);
+        self.particles.spawn(event);
     }
 
     pub fn step(&mut self, mut input: WireInput, dt: f32) {
         // 空にしても容量は残る。毎フレーム新しい `Vec` は作らない。
-        self.impacts.clear();
+        self.events.clear();
         if self.over {
             return;
         }
@@ -135,35 +156,50 @@ impl Game {
         self.aim = input.aim;
         // 戻る途中のクリックは、戻り切ったフレームのクリックとして扱う。
         // 向きは押したときではなく、このフレームのカーソル。
+        let anchored_before = self.player.anchor.is_some();
         if self.player.resolve_wire(input.pressed, dt) {
             input.pressed = true;
+        }
+        if anchored_before && self.player.anchor.is_none() {
+            self.emit(Event::WirePulledBack);
         }
         // 撃ったワイヤーが地形より手前の敵に当たったら、その敵を倒し、引き寄せられながら上へ跳ねる。
         // 天井やブロックに刺すか、何もない所へ撃つと連鎖が切れる。ワイヤーを戻すだけなら切れない。
         // 敵の判定は、ワイヤーが手元にあって撃つフレームだけ行う。
         if input.pressed && self.player.can_shoot() {
             if let Some((index, point)) = self.enemy_target(input.aim) {
+                let multiplier = self.next_multiplier();
                 self.enemies.list.swap_remove(index);
                 self.kills += 1;
-                self.kill_points += KILL_POINTS * self.next_multiplier();
+                self.kill_points += KILL_POINTS * multiplier;
                 self.chain += 1;
-                self.emit(Impact::EnemyKilled { at: point });
+                self.emit(Event::EnemyKilled {
+                    at: point,
+                    multiplier,
+                });
                 self.player.pull_toward(point);
                 input.pressed = false;
             } else {
                 self.chain = 0;
             }
         }
-        // この更新で「刺さっていなかった」から「刺さった」へ変わったときだけ火花を出す。
-        // 最初から刺さっている状態や、手元へ戻すだけのクリックでは出さない。
+        // ワイヤーとブーストの出来事は、自機の更新の前後の状態を比べて拾う。
+        // 刺さっていなかった状態から刺さったときだけ火花を出す。最初から刺さっている状態では出さない。
         let was_anchored = self.player.anchor.is_some();
+        let cooldown = self.player.boost_cooldown;
+        if input.pressed && self.player.can_shoot() {
+            self.emit(Event::WireShot);
+        }
         self.player.finish_update(input, &self.level, dt);
         if let (false, Some(anchor)) = (was_anchored, self.player.anchor) {
             let normal = (self.player.position - anchor.point).normalize_or_zero();
-            self.emit(Impact::WireStuck {
+            self.emit(Event::WireAttached {
                 at: anchor.point,
                 normal,
             });
+        }
+        if self.player.boost_cooldown > cooldown {
+            self.emit(Event::Boosted);
         }
         self.best_x = self.best_x.max(self.player.position.x);
         let player = self.player.position;
@@ -178,6 +214,7 @@ impl Game {
         let hit = self.enemies.any_touching(player, PLAYER_HURT_RADIUS);
         if fell || hit || caught {
             self.over = true;
+            self.emit(Event::GameOver);
         }
         self.particles.update(dt);
     }
@@ -501,6 +538,53 @@ mod tests {
     }
 
     #[test]
+    fn wire_events_follow_shoot_attach_and_pull_back() {
+        let mut game = Game::with_seed(1);
+        // 始めから刺さっているワイヤーは、撃った出来事にしない。
+        game.step(WireInput::default(), DT);
+        assert!(game.events.is_empty());
+        shoot(&mut game, vec2(0.0, -1.0));
+        assert_eq!(game.events, vec![Event::WirePulledBack]);
+        release_wire(&mut game);
+        shoot(&mut game, vec2(0.0, -1.0));
+        let point = game.player.anchor.unwrap().point;
+        let normal = (game.player.position - point).normalize_or_zero();
+        assert_eq!(
+            game.events,
+            vec![Event::WireShot, Event::WireAttached { at: point, normal }]
+        );
+    }
+
+    #[test]
+    fn kill_events_carry_the_chain_multiplier() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        for multiplier in 1..=2 {
+            place_enemy(&mut game, 300.0);
+            let at = game.player.position + vec2(300.0 - ENEMY_RADIUS, 0.0);
+            shoot(&mut game, vec2(1.0, 0.0));
+            assert_eq!(game.events, vec![Event::EnemyKilled { at, multiplier }]);
+        }
+    }
+
+    #[test]
+    fn boost_and_game_over_are_events() {
+        let mut game = Game::with_seed(1);
+        let input = WireInput {
+            boost: true,
+            ..Default::default()
+        };
+        game.step(input, DT);
+        assert_eq!(game.events, vec![Event::Boosted]);
+        // 待ち時間の間は押してもブーストしない。
+        game.step(input, DT);
+        assert!(game.events.is_empty());
+        game.hazard_x = game.player.position.x;
+        game.step(WireInput::default(), DT);
+        assert_eq!(game.events, vec![Event::GameOver]);
+    }
+
+    #[test]
     fn touching_enemy_ends_the_game() {
         let mut game = Game::with_seed(1);
         place_enemy(&mut game, 0.0);
@@ -665,7 +749,7 @@ mod tests {
         place_enemy(&mut game, 300.0);
         shoot(&mut game, vec2(1.0, 0.0));
         let at = origin + vec2(300.0 - ENEMY_RADIUS, 0.0);
-        assert_eq!(game.impacts, vec![Impact::EnemyKilled { at }]);
+        assert_eq!(game.events, vec![Event::EnemyKilled { at, multiplier: 1 }]);
         let bits: Vec<_> = game.particles.alive().collect();
         assert_eq!(bits.len(), FRAGMENT_COUNT);
         assert!(bits.iter().all(|p| p.kind == ParticleKind::Fragment));
@@ -678,10 +762,10 @@ mod tests {
         assert!(color.a > 0.5);
 
         // 次の更新ではきっかけは空になる。飛んでいる破片はそのまま残る。
-        let capacity = game.impacts.capacity();
+        let capacity = game.events.capacity();
         game.step(WireInput::default(), DT);
-        assert!(game.impacts.is_empty());
-        assert_eq!(game.impacts.capacity(), capacity);
+        assert!(game.events.is_empty());
+        assert_eq!(game.events.capacity(), capacity);
         assert!(game.particles.alive_count() > 0);
     }
 
@@ -694,11 +778,14 @@ mod tests {
         let anchor = game.player.anchor.unwrap();
         let normal = (game.player.position - anchor.point).normalize_or_zero();
         assert_eq!(
-            game.impacts,
-            vec![Impact::WireStuck {
-                at: anchor.point,
-                normal,
-            }]
+            game.events,
+            vec![
+                Event::WireShot,
+                Event::WireAttached {
+                    at: anchor.point,
+                    normal,
+                }
+            ]
         );
         let sparks: Vec<_> = game.particles.alive().collect();
         assert_eq!(sparks.len(), SPARK_COUNT);
@@ -714,14 +801,14 @@ mod tests {
         let mut game = Game::with_seed(1);
         shoot(&mut game, vec2(0.0, -1.0));
         assert!(game.player.anchor.is_none());
-        assert!(game.impacts.is_empty());
+        assert_eq!(game.events, vec![Event::WirePulledBack]);
         assert_eq!(game.particles.alive_count(), 0);
 
         release_wire(&mut game);
         game.enemies.list.clear();
         shoot(&mut game, vec2(0.0, 1.0));
         assert!(game.player.anchor.is_none());
-        assert!(game.impacts.is_empty());
+        assert_eq!(game.events, vec![Event::WireShot]);
         assert_eq!(game.particles.alive_count(), 0);
     }
 
@@ -731,9 +818,9 @@ mod tests {
         release_wire(&mut game);
         place_enemy(&mut game, 300.0);
         shoot(&mut game, vec2(1.0, 0.0));
-        let at = match game.impacts[0] {
-            Impact::EnemyKilled { at } => at,
-            Impact::WireStuck { .. } => panic!("倒したのに火花だけが出た"),
+        let at = match game.events[0] {
+            Event::EnemyKilled { at, .. } => at,
+            _ => panic!("倒したのに別の出来事が先に来た"),
         };
         game.player.position = at;
         game.player.velocity = Vec2::ZERO;
@@ -746,9 +833,9 @@ mod tests {
         // 破片の中から天井へ撃っても、刺さる先は地形のまま。
         shoot(&mut game, vec2(0.0, -1.0));
         let anchor = game.player.anchor.expect("天井に刺さる");
-        assert!(game.impacts.iter().any(|impact| matches!(
+        assert!(game.events.iter().any(|impact| matches!(
             impact,
-            Impact::WireStuck { at, .. } if *at == anchor.point
+            Event::WireAttached { at, .. } if *at == anchor.point
         )));
         assert!(game
             .particles

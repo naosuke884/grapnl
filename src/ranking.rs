@@ -1,13 +1,12 @@
 //! ゲームオーバーの画面に出す、今日のコースのランキング。
 //! ゲームオーバーになったらスコアを送ってから読み始め（`roommate_sdk::request_ranking`）、
 //! 読み終えたら上位と自分の順位を出す。送ったばかりのスコアも順位に入る。
-//! 名前は誰でも付けられ、画面の文字だけに絞ったフォントでは描けないことが多い。
-//! そのときだけ、名前用に全文字のフォント（約 1.8 MB）を後から読み込み、それまでは描けない文字を「?」にする。
+//! 名前は `names::NameFont` で描く。
 
-use macroquad::experimental::coroutines::{start_coroutine, Coroutine};
 use macroquad::prelude::*;
 use roommate_sdk::{Ranking, RankingStatus};
 
+use crate::names::NameFont;
 use crate::text::{self, Text};
 
 /// 上位から出す行数の上限。画面が低いときはこれより減らす。
@@ -20,16 +19,6 @@ pub const WIDTH: f32 = 640.0;
 const RANK_RIGHT: f32 = 80.0;
 /// 名前の列の左端（表の左端から）。
 const NAME_LEFT: f32 = 112.0;
-/// 名前の無い人は、roommate が匿名 ID の頭 4 文字から作る（「名無し#1a2b」）。
-/// よく出るので、絞ったフォントに入れておき、名前用のフォントを読まずに描けるようにする。
-#[allow(dead_code)]
-const NAME_CHARS: &str = "名無し#0123456789abcdef";
-/// 名前用のフォント。scripts/subset-font.py が web/ に置く。ブラウザではページと同じ場所から読む。
-#[cfg(target_arch = "wasm32")]
-const NAMES_FONT: &str = "DotGothic16-Regular-names.ttf";
-#[cfg(not(target_arch = "wasm32"))]
-const NAMES_FONT: &str = "web/DotGothic16-Regular-names.ttf";
-
 const HEADER_COLOR: Color = Color::new(0.59, 0.78, 0.92, 1.0);
 const ROW_COLOR: Color = Color::new(0.85, 0.88, 0.92, 1.0);
 /// 自分の行。連鎖の表示と同じ色。
@@ -51,25 +40,14 @@ enum Line {
     Mine(u32),
 }
 
-/// 名前用のフォント。一度読み込んだら、やり直しても持っておく。
-enum NamesFont {
-    NotNeeded,
-    Loading(Coroutine<Option<Vec<u8>>>),
-    Ready(Text),
-    /// 読み込めなかった。描けない文字は「?」のままにし、読み直さない。
-    Failed,
-}
-
 pub struct Board {
     status: RankingStatus,
-    names: NamesFont,
 }
 
 impl Default for Board {
     fn default() -> Self {
         Self {
             status: RankingStatus::NotRequested,
-            names: NamesFont::NotNeeded,
         }
     }
 }
@@ -87,8 +65,8 @@ impl Board {
     }
 
     /// 毎フレーム呼ぶ。読み終えたら手元に持ち、それ以降は roommate-sdk に聞かない。
-    /// `text` で描けない名前があれば、名前用のフォントを読み始める。
-    pub fn update(&mut self, text: &Text) {
+    /// 名前を `names` に見せ、描けない名前があれば名前用のフォントを読み始めさせる。
+    pub fn update(&mut self, text: &Text, names: &mut NameFont) {
         if self.status == RankingStatus::Loading {
             match roommate_sdk::ranking() {
                 // 頼んだ直後に頼んでいないことになるのは、データを消したときなど。読み込み中のままにはしない。
@@ -96,44 +74,10 @@ impl Board {
                 status => self.status = status,
             }
         }
-        match &self.names {
-            NamesFont::NotNeeded => {
-                if let RankingStatus::Ready(ranking) = &self.status {
-                    let missing = ranking
-                        .entries
-                        .iter()
-                        .any(|entry| !entry.name.chars().all(|c| text.has(c)));
-                    if missing {
-                        self.names = NamesFont::Loading(start_coroutine(async {
-                            load_file(NAMES_FONT).await.ok()
-                        }));
-                    }
-                }
+        if let RankingStatus::Ready(ranking) = &self.status {
+            for entry in &ranking.entries {
+                names.want(text, &entry.name);
             }
-            NamesFont::Loading(loading) => {
-                if loading.is_done() {
-                    self.names = match loading
-                        .retrieve()
-                        .flatten()
-                        .and_then(|bytes| Text::from_bytes(&bytes))
-                    {
-                        Some(font) => NamesFont::Ready(font),
-                        None => NamesFont::Failed,
-                    };
-                }
-            }
-            NamesFont::Ready(_) | NamesFont::Failed => {}
-        }
-    }
-
-    /// 名前を描く。名前用のフォントがあればそれで、無ければ描けない文字を「?」にして描く。
-    fn draw_name(&self, text: &Text, name: &str, x: f32, baseline: f32, color: Color) {
-        if text.drawable(name) == name {
-            text.draw(name, x, baseline, text::MEDIUM, color);
-        } else if let NamesFont::Ready(names) = &self.names {
-            names.draw(&names.drawable(name), x, baseline, text::MEDIUM, color);
-        } else {
-            text.draw(&text.drawable(name), x, baseline, text::MEDIUM, color);
         }
     }
 
@@ -142,8 +86,14 @@ impl Board {
         ROW_HEIGHT * (rows as f32 + 2.0)
     }
 
+    /// 今の中身を `rows` 行まで出したときの高さ。見出しと、実際に出す行の分。
+    /// まだ誰もいないときなどは、`height` より低くなる。
+    pub fn used_height(&self, rows: usize) -> f32 {
+        ROW_HEIGHT * (lines(&self.status, rows).len() as f32 + 1.0)
+    }
+
     /// `top` を見出しの上端にして、`center_x` を中心に描く。上位は `rows` 行まで出す。
-    pub fn draw(&self, text: &Text, center_x: f32, top: f32, rows: usize) {
+    pub fn draw(&self, text: &Text, names: &NameFont, center_x: f32, top: f32, rows: usize) {
         let left = center_x - WIDTH / 2.0;
         let mut baseline = top + ROW_HEIGHT - 8.0;
         text.draw_centered(
@@ -173,7 +123,8 @@ impl Board {
                         baseline,
                         color,
                     );
-                    self.draw_name(text, &name, left + NAME_LEFT, baseline, color);
+                    let (font, name) = names.pick(text, &name);
+                    font.draw(&name, left + NAME_LEFT, baseline, text::MEDIUM, color);
                     draw_right(text, &score.to_string(), left + WIDTH, baseline, color);
                 }
                 Line::Mine(rank) => text.draw_centered(

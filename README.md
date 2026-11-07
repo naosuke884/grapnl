@@ -21,6 +21,7 @@ Rust + [macroquad](https://github.com/not-fl3/macroquad) で作る、ブラウ�
 - 進むほど地形が難しくなる。天井の穴が増えて広がり、穴の中のブロックは細く、間隔が広くなる（3000 m で最も難しくなる）
 - ゲームオーバーの画面に、今日のコースのランキングの上位 5 位と自分の順位が出る。自己ベストを更新したら「NEW BEST!」が出る。「Retry」ボタン（または R・スペース）でやり直す
 - 左から赤い領域が迫ってくる。上限なしにだんだん速くなり、約 6 分で自機の最高速を超えるので、終わりのないコースでも実質の制限時間がある。追いつかれるか、下へ落ちるか、敵に触れると終わり
+- 同じコースを同時に走っている人が、青い影と「名前#ID の頭 4 文字」で見える
 
 初めて開いたときに、ランキングに出す名前の入力欄が一度だけ出ます（roommate-sdk が出す）。「あとで」で閉じても遊べ、ページの上の細いヘッダーの「Change name」でいつでも付けたり変えたりできます。入力欄を開いている間はゲームが一時停止します。
 
@@ -78,7 +79,7 @@ python3 -m http.server 8080 --directory web
 - `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「Change name」「Delete my data」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「Change name」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
-- `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない
+- `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。部屋のサーバーが知らせる各人の表示名（「名前#1a2b」）も wasm へ渡し、影の上に出す。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない
 - `grapnl.wasm` — `./scripts/build-wasm.sh` が生成する（gitignore 済み）
 - `DotGothic16-Regular-names.ttf` — ランキングの名前を描く全文字のフォント（約 1.8 MB）。画面の文字だけに絞った同梱のフォントで描けない名前があったときだけ、ゲームが後から読み込む。`scripts/subset-font.py` が作る
 - `bgm.ogg` — BGM。`scripts/gen-bgm.py` で合成する。最初の読み込みを重くしないよう、ゲームが始まってから読み込む

@@ -4,6 +4,7 @@ mod game;
 mod generator;
 mod hitstop;
 mod level;
+mod names;
 mod page;
 mod particles;
 mod pause;
@@ -83,6 +84,8 @@ async fn main() {
     let mut volume = Volume::load();
     // ゲームオーバーの画面に出す今日のランキング。
     let mut board = Board::default();
+    // ランキングと影の名前を描く。描けない名前があれば、名前用のフォントを後から読む。
+    let mut name_font = names::NameFont::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -138,16 +141,21 @@ async fn main() {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             // クリックは「Retry」ボタンの上だけで受け付け、ランキングを見ているときのクリックでは始めない。
-            let on_retry = game_over_layout(screen).retry.contains(pointer);
+            let on_retry = game_over_layout(screen, &board).retry.contains(pointer);
             if retry_requested(
                 since_over,
                 left_click && on_retry,
                 is_key_pressed(KeyCode::R),
                 is_key_pressed(KeyCode::Space),
             ) {
+                let old_room = game::room_key(game.seed());
                 game = Game::new();
-                // 日付が変わっていれば、新しいコースの部屋へ移る。
-                realtime::join(&game::room_key(game.seed()));
+                // 日付が変わっていれば、新しいコースの部屋へ移る。ID は部屋ごとに振られるので、前の部屋の影と名前は捨てる。
+                let room = game::room_key(game.seed());
+                if room != old_room {
+                    shadows = Shadows::default();
+                }
+                realtime::join(&room);
                 accumulator = 0.0;
                 since_over = 0.0;
                 hit_stop = HitStop::default();
@@ -186,7 +194,11 @@ async fn main() {
         // 自己ベストは roommate-sdk が持つ。開いた後にサーバーの値が届くと下がることもあり、
         // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
         let best = best_label(roommate_sdk::best_score());
-        board.update(&text);
+        board.update(&text, &mut name_font);
+        for name in shadows.names() {
+            name_font.want(&text, name);
+        }
+        name_font.update();
         bgm.update(volume.gain());
         let now = get_time();
         while let Some(message) = realtime::receive() {
@@ -212,7 +224,13 @@ async fn main() {
         shaken.target += shake.offset();
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
-        shadows.draw(now, &sprites);
+        shadows.draw(
+            now,
+            &sprites,
+            &text,
+            &name_font,
+            game::VIEW_HEIGHT / screen_height(),
+        );
         game.draw(&text, &sprites);
 
         set_default_camera();
@@ -270,7 +288,7 @@ async fn main() {
         }
         if game.over {
             draw_game_over(
-                &text, &game, &board, since_over, new_best, &best, pointer, screen,
+                &text, &name_font, &game, &board, since_over, new_best, &best, pointer, screen,
             );
         }
 
@@ -478,12 +496,14 @@ struct GameOverLayout {
     retry: Rect,
 }
 
-fn game_over_layout(screen: Vec2) -> GameOverLayout {
+fn game_over_layout(screen: Vec2, board: &Board) -> GameOverLayout {
     // 行が収まる分だけ出し、全体を縦の中央に置く。
     let rows = ranking_rows(screen.y);
-    let height = game_over_fixed_height() + Board::height(rows);
-    let top = ((screen.y - height) / 2.0).max(OVER_MARGIN);
-    let retry_top = top + height - RETRY_SIZE.y;
+    // 上端は表がいっぱいのときで決め、ランキングが届いても見出しが動かないようにする。
+    let full = game_over_fixed_height() + Board::height(rows);
+    let top = ((screen.y - full) / 2.0).max(OVER_MARGIN);
+    // 行が少ないときは表を縮め、「Retry」ボタンを上へ詰める。
+    let retry_top = top + game_over_fixed_height() + board.used_height(rows) - RETRY_SIZE.y;
     GameOverLayout {
         top,
         rows,
@@ -499,6 +519,7 @@ fn game_over_layout(screen: Vec2) -> GameOverLayout {
 #[allow(clippy::too_many_arguments)]
 fn draw_game_over(
     text: &Text,
+    names: &names::NameFont,
     game: &Game,
     board: &Board,
     since_over: f32,
@@ -509,7 +530,7 @@ fn draw_game_over(
 ) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
     let center_x = screen.x / 2.0;
-    let layout = game_over_layout(screen);
+    let layout = game_over_layout(screen, board);
     let mut y = layout.top + OVER_TITLE;
     text.draw_centered("GAME OVER", center_x, y, text::LARGE, WHITE);
     y += OVER_REASON;
@@ -557,10 +578,10 @@ fn draw_game_over(
         center_x - ranking::WIDTH / 2.0 - pad.x,
         y - pad.y,
         ranking::WIDTH + pad.x * 2.0,
-        Board::height(layout.rows) + pad.y * 2.0,
+        board.used_height(layout.rows) + pad.y * 2.0,
         Color::from_rgba(20, 24, 32, 230),
     );
-    board.draw(text, center_x, y, layout.rows);
+    board.draw(text, names, center_x, y, layout.rows);
     draw_retry_button(text, layout.retry, since_over >= RETRY_DELAY, pointer);
 }
 
@@ -601,7 +622,7 @@ mod tests {
     fn retry_button_sits_below_the_ranking_on_screen() {
         for height in [720.0, 400.0] {
             let screen = vec2(1280.0, height);
-            let layout = game_over_layout(screen);
+            let layout = game_over_layout(screen, &Board::default());
             assert!(layout.retry.bottom() <= height);
             assert!(layout.retry.y >= layout.top + game_over_fixed_height() - RETRY_SIZE.y);
         }

@@ -6,10 +6,12 @@ use std::collections::HashMap;
 
 use macroquad::prelude::*;
 
+use crate::names::NameFont;
 use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
+use crate::text::{self, Text};
 
 use crate::game::FALL_LIMIT_Y;
-use crate::player::{Player, MAX_WIRE_LENGTH};
+use crate::player::{Player, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 
 /// 送る中身の形式の版。形式を変えたら上げ、古い形式の人の状態は読まずに捨てる。
 const FORMAT_VERSION: u8 = 1;
@@ -26,6 +28,8 @@ const RENDER_DELAY: f64 = 0.2;
 const PEER_TIMEOUT: f64 = 2.0;
 /// 1 人ぶんに覚えておく状態の数。
 const MAX_SAMPLES: usize = 16;
+/// 表示名の文字数の上限。名前 12 文字と「#」と ID の頭 4 文字。
+const MAX_NAME_CHARS: usize = 17;
 /// 覚えておく人数の上限。部屋は 20 人までなので、それより多い ID は捨てる。
 const MAX_PEERS: usize = 32;
 /// 受け付ける位置の範囲。コースの外のありえない値は捨てる。
@@ -114,11 +118,14 @@ pub enum Incoming {
     States(Vec<(u16, State)>),
     /// その人が部屋を出た。
     Left(u16),
+    /// その人の表示名（「名前#1a2b」）。部屋のサーバーが決めて知らせる。
+    Named(u16, String),
 }
 
 /// JS から受け取る 1 件のメッセージを読む。先頭の 1 バイトで種類を分ける。
 /// - 0: 部屋から届いたバイナリ。`[送信者 ID: u16][長さ: u16][バイト列]` の繰り返し（big endian）
 /// - 1: 部屋を出た人。`[ID: u16]`（big endian）
+/// - 2: その人の表示名。`[ID: u16][UTF-8 の名前]`。長すぎる名前や読めない名前は捨てる
 pub fn read_incoming(message: &[u8]) -> Option<Incoming> {
     let (&kind, rest) = message.split_first()?;
     match kind {
@@ -143,6 +150,14 @@ pub fn read_incoming(message: &[u8]) -> Option<Incoming> {
             let id: [u8; 2] = rest.try_into().ok()?;
             Some(Incoming::Left(u16::from_be_bytes(id)))
         }
+        2 => {
+            let (id, name) = rest.split_first_chunk::<2>()?;
+            let name = std::str::from_utf8(name).ok()?;
+            let valid = !name.is_empty()
+                && name.chars().count() <= MAX_NAME_CHARS
+                && !name.chars().any(char::is_control);
+            valid.then(|| Incoming::Named(u16::from_be_bytes(*id), name.to_owned()))
+        }
         _ => None,
     }
 }
@@ -160,6 +175,8 @@ struct Peer {
 #[derive(Default)]
 pub struct Shadows {
     peers: HashMap<u16, Peer>,
+    /// 部屋にいる人の表示名。状態より先に届くことがあるので、影とは別に持つ。
+    names: HashMap<u16, String>,
 }
 
 impl Shadows {
@@ -173,6 +190,12 @@ impl Shadows {
             }
             Incoming::Left(id) => {
                 self.peers.remove(&id);
+                self.names.remove(&id);
+            }
+            Incoming::Named(id, name) => {
+                if self.names.contains_key(&id) || self.names.len() < MAX_PEERS {
+                    self.names.insert(id, name);
+                }
             }
         }
     }
@@ -211,23 +234,55 @@ impl Shadows {
     }
 
     /// 今描く、各人の位置と支点。
+    #[cfg(test)]
     pub fn positions(&self, now: f64) -> Vec<(Vec2, Option<Vec2>)> {
+        self.located(now)
+            .into_iter()
+            .map(|(_, position, anchor)| (position, anchor))
+            .collect()
+    }
+
+    /// 今描く、各人の ID と位置と支点。
+    fn located(&self, now: f64) -> Vec<(u16, Vec2, Option<Vec2>)> {
         self.peers
-            .values()
-            .filter_map(|peer| {
+            .iter()
+            .filter_map(|(&id, peer)| {
                 interpolate(&peer.samples, (now - peer.offset - RENDER_DELAY) * 1000.0)
+                    .map(|(position, anchor)| (id, position, anchor))
             })
             .collect()
     }
 
-    pub fn draw(&self, now: f64, sprites: &Sprites) {
+    /// 部屋にいる人の表示名。名前用のフォントを読むかどうかを決めるのに使う。
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.names.values().map(String::as_str)
+    }
+
+    /// ワールド座標のカメラの下で描く。`world_per_pixel` は画面の 1 ピクセルに映るワールドの幅で、
+    /// 名前の文字を画面のピクセルで決めた大きさにするのに使う。
+    pub fn draw(
+        &self,
+        now: f64,
+        sprites: &Sprites,
+        text: &Text,
+        names: &NameFont,
+        world_per_pixel: f32,
+    ) {
         let color = Color::from_rgba(150, 170, 220, 90);
-        for (position, anchor) in self.positions(now) {
+        let label_color = Color::from_rgba(170, 190, 235, 170);
+        for (id, position, anchor) in self.located(now) {
             if let Some(anchor) = anchor {
                 draw_dot_line(position, anchor, color, true);
             }
             // 自機と同じ絵を、青く透かして描く。
             draw_sprite(&sprites.player, position, color);
+            // 名前は影の上に、画面で同じ大きさに見えるよう出す。
+            if let Some(name) = self.names.get(&id) {
+                let (font, name) = names.pick(text, name);
+                let size = text::SMALL;
+                let above = position - vec2(0.0, PLAYER_RADIUS + size * 0.9 * world_per_pixel);
+                font.draw_scaled_centered(&name, above, size as u16, world_per_pixel, label_color);
+            }
         }
     }
 }
@@ -335,6 +390,19 @@ mod tests {
             Some(Incoming::States(vec![(3, state(10, 100.0))]))
         );
         assert_eq!(read_incoming(&[1, 0, 7]), Some(Incoming::Left(7)));
+        let mut named = vec![2, 0, 7];
+        named.extend_from_slice("あおい#1a2b".as_bytes());
+        assert_eq!(
+            read_incoming(&named),
+            Some(Incoming::Named(7, "あおい#1a2b".to_owned()))
+        );
+        // 長すぎる名前、制御文字、壊れた UTF-8 は捨てる。
+        let mut long = vec![2, 0, 7];
+        long.extend_from_slice("x".repeat(MAX_NAME_CHARS + 1).as_bytes());
+        assert_eq!(read_incoming(&long), None);
+        assert_eq!(read_incoming(&[2, 0, 7, b'a', b'\n']), None);
+        assert_eq!(read_incoming(&[2, 0, 7, 0xff]), None);
+        assert_eq!(read_incoming(&[2, 0, 7]), None);
         assert_eq!(read_incoming(&[1, 0]), None);
         assert_eq!(read_incoming(&[]), None);
         assert_eq!(read_incoming(&[9, 1, 2]), None);

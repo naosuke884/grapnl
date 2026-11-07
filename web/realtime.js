@@ -39,6 +39,20 @@
         if (queue.length > MAX_QUEUE) queue.shift();
     }
 
+    // 表示名は `[2][ID: u16][UTF-8 の名前]` にして wasm へ渡す。名前の中身は wasm が確かめる。
+    var MAX_NAME_BYTES = 128;
+    function pushName(id, name) {
+        if (!Number.isInteger(id) || id < 0 || id > 0xffff || typeof name !== "string") return;
+        var bytes = new TextEncoder().encode(name);
+        if (bytes.length === 0 || bytes.length > MAX_NAME_BYTES) return;
+        var message = new Uint8Array(bytes.length + 3);
+        message[0] = 2;
+        message[1] = (id >> 8) & 255;
+        message[2] = id & 255;
+        message.set(bytes, 3);
+        push(message);
+    }
+
     function scheduleReconnect(key) {
         if (stopped || reconnectTimer !== null) return;
         reconnectTimer = setTimeout(function () {
@@ -67,15 +81,23 @@
                 ws.onmessage = function (event) {
                     if (socket !== ws) return;
                     if (typeof event.data === "string") {
-                        // 部屋を出た人だけ伝える。来た人は状態が届いたときに分かる。
+                        // 部屋を出た人と、表示名を伝える。来た人は状態が届いたときに分かる。
                         var notice;
                         try {
                             notice = JSON.parse(event.data);
                         } catch (e) {
                             return;
                         }
-                        if (notice && notice.type === "leave" && Number.isInteger(notice.id)) {
+                        if (!notice) return;
+                        if (notice.type === "leave" && Number.isInteger(notice.id)) {
                             push(new Uint8Array([1, (notice.id >> 8) & 255, notice.id & 255]));
+                        } else if (notice.type === "join") {
+                            pushName(notice.id, notice.name);
+                        } else if (notice.type === "welcome" && notice.names) {
+                            // 先にいた人の表示名。キーは ID の文字列。
+                            Object.keys(notice.names).forEach(function (id) {
+                                pushName(Number(id), notice.names[id]);
+                            });
                         }
                         return;
                     }

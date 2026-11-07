@@ -19,4 +19,6 @@ put realtime.js "text/javascript; charset=utf-8"
 put grapnl.wasm "application/wasm"
 # ランキングの名前を描くフォント。描けない名前があったときだけゲームが読み込む。
 put MPLUS1p-Bold-names.ttf "font/ttf"
+# BGM。ゲームが始まってから読み込む。
+put bgm.ogg "audio/ogg"
 put index.html "text/html; charset=utf-8"

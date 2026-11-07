@@ -1,3 +1,4 @@
+mod bgm;
 mod daily;
 mod enemy;
 mod game;
@@ -21,6 +22,7 @@ mod volume;
 
 use macroquad::prelude::*;
 
+use bgm::Bgm;
 use game::Game;
 use hitstop::HitStop;
 use pause::Pause;
@@ -60,6 +62,8 @@ async fn main() {
     let text = Text::load();
     // 音は始まる前に全部読み込む。
     let sfx = sfx::Sfx::load().await;
+    // 曲は大きいので待たずに始め、読み終えたら流す。
+    let mut bgm = Bgm::start();
     let mut game = Game::new();
     realtime::join(&game::room_key(game.seed()));
     let mut shadows = Shadows::default();
@@ -182,6 +186,7 @@ async fn main() {
         // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
         let best = best_label(roommate_sdk::best_score());
         board.update(&text);
+        bgm.update(volume.gain());
         let now = get_time();
         while let Some(message) = realtime::receive() {
             if let Some(incoming) = shadow::read_incoming(&message) {

@@ -33,7 +33,7 @@
             height: calc(100% - var(--header-height));
         }
 
-        /* 名前と「名前を変える」「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
+        /* サイトへ戻るリンクと名前、「名前を変える」「データを消す」だけを置く、細いヘッダー。ゲームの邪魔にならないよう控えめにする。 */
         #header {
             position: fixed;
             inset: 0 0 auto 0;
@@ -52,6 +52,23 @@
             white-space: nowrap;
             user-select: none;
             -webkit-user-select: none;
+        }
+
+        #header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #header-back {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        #header-back:hover,
+        #header-back:focus-visible {
+            color: white;
+            text-decoration: underline;
         }
 
         #header-name {
@@ -201,9 +218,13 @@
          ローダーは window.onresize で clientWidth / clientHeight を読み、
          描画バッファをブラウザの表示サイズに合わせる。 -->
     <canvas id="glcanvas" tabindex="1" oncontextmenu="event.preventDefault()"></canvas>
-    <!-- ゲームの外に置く細いヘッダー。自分のデータ（匿名 ID と roommate の全ゲームのスコア）を消せる。 -->
+    <!-- ゲームの外に置く細いヘッダー。サイトへ戻れる。自分のデータ（匿名 ID と roommate の全ゲームのスコア）を消せる。 -->
     <header id="header">
-        <span id="header-name">grapnl</span>
+        <span id="header-title">
+            <!-- サイトのゲームページ（説明と今日のランキング）へ戻る。サイトの「遊ぶ」ボタンと同じく同じタブで移る。 -->
+            <a id="header-back" href="https://roommate.hayashi-naoki.com/games/grapnl/">← roommate</a>
+            <span id="header-name">grapnl</span>
+        </span>
         <span id="header-actions">
             <!-- ランキングに出す名前の入力欄は roommate-sdk が出す。 -->
             <button type="button" id="name-open">名前を変える</button>

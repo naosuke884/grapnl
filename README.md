@@ -25,6 +25,8 @@ Rust + [macroquad](https://github.com/not-fl3/macroquad) で作る、ブラウ�
 
 ページの上の細いヘッダーの「データを消す」で、自分の匿名 ID と、roommate のすべてのゲームのスコアを消せます。確認のダイアログで「消す」を選ぶと消し、結果を出します。ダイアログを開いている間はゲームが一時停止します。消した後は、ページを開き直すまでスコアを記録しません。
 
+ページの上の細いヘッダーの左端の「← roommate」で、サイトのゲームページ（説明と今日のランキング）へ戻れます。
+
 ## 必要なもの
 
 - [rustup](https://rustup.rs/) 経由の Rust stable（この雛形は rustc 1.99.1 でビルドした）
@@ -72,7 +74,7 @@ python3 -m http.server 8080 --directory web
 
 `web/` が配信用の一式です。
 
-- `index.html` — 上に細いヘッダー（名前と「名前を変える」「データを消す」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「名前を変える」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
+- `index.html` — 上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「名前を変える」「データを消す」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「名前を変える」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
 - `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない

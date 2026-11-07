@@ -7,6 +7,7 @@ mod player;
 mod realtime;
 mod sfx;
 mod shadow;
+mod shake;
 mod text;
 
 use macroquad::prelude::*;
@@ -14,6 +15,7 @@ use macroquad::prelude::*;
 use game::{Game, VIEW_HEIGHT};
 use player::WireInput;
 use shadow::{Shadows, State};
+use shake::Shake;
 use text::Text;
 
 /// 更新は固定の刻みで回し、画面のリフレッシュレートで手触りが変わらないようにする。
@@ -56,9 +58,12 @@ async fn main() {
     // クリックは描画フレームで受け、次に回る固定刻みの更新で 1 回だけ使う。
     let mut wire_pressed = false;
     let mut boost_pressed = false;
+    let mut shake = Shake::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
+        // このフレームの出来事で揺らし始めた分は、減らす前に描けるよう先に進める。
+        shake.update(frame_time);
         let camera = view_camera(game.camera_x);
         let aim = camera.screen_to_world(mouse_position().into());
         wire_pressed |= is_mouse_button_pressed(MouseButton::Left);
@@ -85,6 +90,7 @@ async fn main() {
                 game.step(input, FIXED_DT);
                 for event in &game.events {
                     sfx.play(event);
+                    shake.kick(event);
                 }
                 wire_pressed = false;
                 boost_pressed = false;
@@ -115,7 +121,10 @@ async fn main() {
 
         clear_background(Color::from_rgba(16, 18, 24, 255));
 
-        set_camera(&view_camera(game.camera_x));
+        // 揺れは描画用のカメラだけに足す。照準は揺れていない `camera` で変換する。
+        let mut shaken = view_camera(game.camera_x);
+        shaken.target += shake.offset();
+        set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now);
         game.draw();

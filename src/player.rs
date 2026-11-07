@@ -29,7 +29,8 @@ const WIRE_DAMPING: f32 = 4.0;
 const MAX_STRETCH: f32 = 1.4;
 /// 画面に描くワイヤーの節の数。節どうしをつなぎ、しなって見えるようにする。
 const ROPE_POINTS: usize = 20;
-/// 外したワイヤーが手元へ戻るまでの時間。戻るまでは次を撃てない。
+/// 外した、または戻したワイヤーが手元へ戻るまでの時間。
+/// この間に押したクリックは覚え、戻り切ったフレームに、そのときのカーソルの向きへ撃つ。
 const RETRACT_TIME: f32 = 0.15;
 
 /// ワイヤーの操作。
@@ -57,6 +58,8 @@ pub struct Player {
     pub anchor: Option<Anchor>,
     /// 手元へ戻っている途中のワイヤーの、戻り始めた位置と残り時間。
     retract: Option<(Vec2, f32)>,
+    /// 戻る途中に押したクリック。戻り切ったフレームに、そのときのカーソルの向きへ 1 発撃つ。
+    queued_shot: bool,
     /// 次にブーストできるまでの時間。0 なら使える。
     pub boost_cooldown: f32,
     /// 描画用のワイヤーの節。支点から自機まで並ぶ。見た目だけで、動きには影響しない。
@@ -71,6 +74,7 @@ impl Player {
             velocity: Vec2::ZERO,
             anchor: None,
             retract: None,
+            queued_shot: false,
             boost_cooldown: 0.0,
             rope: Vec::new(),
             rope_prev: Vec::new(),
@@ -82,21 +86,54 @@ impl Player {
         self.anchor.is_none() && self.retract.is_none()
     }
 
-    pub fn update(&mut self, input: WireInput, level: &Level, dt: f32) {
+    /// テスト用。ゲーム本体は敵の判定を挟むため、`resolve_wire` と `finish_update` を分けて呼ぶ。
+    #[cfg(test)]
+    pub fn update(&mut self, mut input: WireInput, level: &Level, dt: f32) {
         // ワイヤーは「撃って刺す → クリックで手元へ戻す → また撃つ」を繰り返す。
-        // 戻すとそのときの速さと向きのまま飛ぶ。
+        // 戻すとそのときの速さと向きのまま飛ぶ。戻している間のクリックは、
+        // 戻り切ったフレームのクリックになり、そのときのカーソルの向きへ撃つ。
+        if self.resolve_wire(input.pressed, dt) {
+            input.pressed = true;
+        }
+        self.finish_update(input, level, dt);
+    }
+
+    /// 戻る時間を進め、このフレームに撃つクリックがあるなら true。
+    /// 戻る途中に押したクリックは覚えて、戻り切ったフレームに true を返す。
+    /// 向きはここでは決めない。true を受け取った側が、その時点のカーソルで撃つ。
+    /// 刺さっているワイヤーを戻すクリックはここで外し、false を返す。
+    pub fn resolve_wire(&mut self, pressed: bool, dt: f32) -> bool {
+        self.advance_retract(dt);
+        if pressed {
+            if let Some(anchor) = self.anchor.take() {
+                self.retract = Some((anchor.point, RETRACT_TIME));
+                self.queued_shot = false;
+                return false;
+            }
+        }
+        if self.can_shoot() && (pressed || self.queued_shot) {
+            self.queued_shot = false;
+            return true;
+        }
+        if pressed {
+            self.queued_shot = true;
+        }
+        false
+    }
+
+    fn advance_retract(&mut self, dt: f32) {
         if let Some((_, left)) = &mut self.retract {
             *left -= dt;
             if *left <= 0.0 {
                 self.retract = None;
             }
         }
-        if input.pressed {
-            if let Some(anchor) = self.anchor.take() {
-                self.retract = Some((anchor.point, RETRACT_TIME));
-            } else if self.can_shoot() {
-                self.shoot_wire(input.aim, level);
-            }
+    }
+
+    /// `resolve_wire` のあとで呼ぶ。撃つクリックが残っていれば、渡されたカーソルの向きへ撃ってから動く。
+    pub fn finish_update(&mut self, input: WireInput, level: &Level, dt: f32) {
+        if input.pressed && self.can_shoot() {
+            self.shoot_wire(input.aim, level);
         }
 
         self.boost_cooldown = (self.boost_cooldown - dt).max(0.0);
@@ -244,6 +281,8 @@ impl Player {
     pub fn pull_toward(&mut self, point: Vec2) {
         self.anchor = None;
         self.retract = None;
+        // 覚えていたクリックで敵を倒したときは、同じクリックでワイヤーを撃たない。
+        self.queued_shot = false;
         let dir = (point - self.position).normalize_or_zero();
         self.velocity = dir * PULL_SPEED + vec2(0.0, -KILL_BOUNCE);
     }
@@ -482,17 +521,46 @@ mod tests {
         let level = ceiling();
         let mut player = Player::new(vec2(0.0, 300.0));
         player.update(press(vec2(0.0, 0.0)), &level, DT);
+        // 戻すクリック自体は、戻り切ったあとの射撃にはならない。
         player.update(press(vec2(0.0, 0.0)), &level, DT);
         assert!(!player.can_shoot());
-        // 戻っている途中のクリックは無視される。
-        player.update(press(vec2(0.0, 0.0)), &level, DT);
         assert!(player.anchor.is_none());
         for _ in 0..(RETRACT_TIME / DT) as usize + 1 {
-            player.update(idle(), &level, DT);
+            // 真上を向いたまま待っても、覚えたクリックが無ければ撃たない。
+            let aim = player.position + vec2(0.0, -1.0);
+            player.update(WireInput { aim, ..idle() }, &level, DT);
         }
         assert!(player.can_shoot());
+        assert!(player.anchor.is_none());
         player.update(press(player.position + vec2(0.0, -1.0)), &level, DT);
         assert!(player.anchor.is_some());
+    }
+
+    #[test]
+    fn click_while_retracting_fires_toward_the_cursor_when_the_wire_is_back() {
+        let level = ceiling();
+        let mut player = Player::new(vec2(0.0, 300.0));
+        player.update(press(vec2(0.0, 0.0)), &level, DT);
+        player.update(press(vec2(0.0, 0.0)), &level, DT);
+        assert!(!player.can_shoot());
+
+        // 戻る途中、天井に当たらない横向きでクリックする。すぐには撃たない。
+        player.update(press(player.position + vec2(1.0, 0.0)), &level, DT);
+        assert!(player.anchor.is_none());
+        assert!(!player.can_shoot());
+
+        // 戻り切ったフレームのカーソルは真上。押したときの横向きでは撃たない。
+        let mut hit = None;
+        for _ in 0..(RETRACT_TIME / DT) as usize + 2 {
+            let aim = player.position + vec2(0.0, -1.0);
+            player.update(WireInput { aim, ..idle() }, &level, DT);
+            if let Some(anchor) = player.anchor {
+                hit = Some(anchor.point);
+                break;
+            }
+        }
+        let point = hit.expect("戻り切ったときに真上へ撃つ");
+        assert_eq!(point.y, 0.0);
     }
 
     #[test]

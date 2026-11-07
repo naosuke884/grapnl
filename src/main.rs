@@ -8,6 +8,7 @@ mod page;
 mod particles;
 mod pause;
 mod player;
+mod ranking;
 mod realtime;
 mod score_popup;
 mod sfx;
@@ -24,6 +25,7 @@ use game::Game;
 use hitstop::HitStop;
 use pause::Pause;
 use player::WireInput;
+use ranking::Board;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
@@ -76,6 +78,8 @@ async fn main() {
     let mut volume = Volume::load();
     // 最初の数回のプレイだけ、画面下に操作の説明を吹き出しで出す。
     let mut tutorial = Tutorial::load();
+    // ゲームオーバーの画面に出す今日のランキング。
+    let mut board = Board::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -143,6 +147,7 @@ async fn main() {
                 since_over = 0.0;
                 hit_stop = HitStop::default();
                 tutorial.restart();
+                board.reset();
             }
             wire_pressed = false;
             boost_pressed = false;
@@ -169,12 +174,14 @@ async fn main() {
             if game.over {
                 tutorial.finish_run();
                 roommate_sdk::submit_score(game.score(), (game.elapsed * 1000.0) as u32);
+                board.request();
             }
         }
 
         // 自己ベストは roommate-sdk が持つ。開いた後にサーバーの値が届くと下がることもあり、
         // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
         let best = best_label(roommate_sdk::best_score());
+        board.update();
         let now = get_time();
         while let Some(message) = realtime::receive() {
             if let Some(incoming) = shadow::read_incoming(&message) {
@@ -275,7 +282,7 @@ async fn main() {
             volume_panel.draw(&text, &volume, hovered);
         }
         if game.over {
-            draw_game_over(&text, &game, since_over, &best, screen);
+            draw_game_over(&text, &game, &board, since_over, &best, screen);
         }
 
         next_frame().await
@@ -329,19 +336,55 @@ fn best_label(best: Option<u32>) -> String {
     }
 }
 
-fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str, screen: Vec2) {
+/// ゲームオーバーの画面の、上から並べる行の間隔。それぞれ前の行のベースラインからの距離。
+const OVER_TITLE: f32 = 56.0;
+const OVER_REASON: f32 = 44.0;
+const OVER_SCORE: f32 = 38.0;
+/// スコアの行のベースラインから、ランキングの見出しの上端まで。
+const OVER_RANKING_GAP: f32 = 20.0;
+/// ランキングの表の下端から、やり直しの案内のベースラインまで。
+const OVER_RETRY: f32 = 30.0;
+const OVER_COURSE: f32 = 36.0;
+/// 画面の上下に残す余白。
+const OVER_MARGIN: f32 = 16.0;
+
+/// ゲームオーバーの画面の、ランキングを除いた高さ。
+fn game_over_fixed_height() -> f32 {
+    OVER_TITLE + OVER_REASON + OVER_SCORE + OVER_RANKING_GAP + OVER_RETRY + OVER_COURSE
+}
+
+/// 画面の高さに収まる、ランキングの上位の行数。
+fn ranking_rows(screen_h: f32) -> usize {
+    let room = screen_h - OVER_MARGIN * 2.0 - game_over_fixed_height() - Board::height(0);
+    ((room / ranking::ROW_HEIGHT).floor().max(0.0) as usize).min(ranking::MAX_ROWS)
+}
+
+fn draw_game_over(
+    text: &Text,
+    game: &Game,
+    board: &Board,
+    since_over: f32,
+    best: &str,
+    screen: Vec2,
+) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
-    let center = screen / 2.0;
-    text.draw_centered("ゲームオーバー", center.x, center.y - 20.0, 56.0, WHITE);
+    let center_x = screen.x / 2.0;
+    // 行が収まる分だけ出し、全体を縦の中央に置く。
+    let rows = ranking_rows(screen.y);
+    let height = game_over_fixed_height() + Board::height(rows);
+    let mut y = ((screen.y - height) / 2.0).max(OVER_MARGIN) + OVER_TITLE;
+    text.draw_centered("ゲームオーバー", center_x, y, 56.0, WHITE);
+    y += OVER_REASON;
     if let Some(reason) = game.end_reason {
         text.draw_centered(
             reason.label(),
-            center.x,
-            center.y + 24.0,
+            center_x,
+            y,
             28.0,
             Color::from_rgba(255, 140, 120, 255),
         );
     }
+    y += OVER_SCORE;
     text.draw_centered(
         &format!(
             "スコア {}（{:.0} m・撃破 {}）   {best}",
@@ -349,25 +392,29 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str, screen:
             game.distance(),
             game.kills
         ),
-        center.x,
-        center.y + 62.0,
+        center_x,
+        y,
         28.0,
         WHITE,
     );
+    y += OVER_RANKING_GAP;
+    board.draw(text, center_x, y, rows);
+    y += Board::height(rows) + OVER_RETRY;
     if since_over >= RETRY_DELAY {
         text.draw_centered(
             "クリックか R かスペースでもう一度",
-            center.x,
-            center.y + 102.0,
+            center_x,
+            y,
             24.0,
             Color::from_rgba(180, 190, 205, 255),
         );
     }
+    y += OVER_COURSE;
     // 日替わりのコース。ゲームオーバーの画面を出している間も、毎フレーム残り時間を進める。
     text.draw_centered_steady(
         &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
-        center.x,
-        center.y + 142.0,
+        center_x,
+        y,
         22.0,
         Color::from_rgba(150, 200, 235, 255),
     );
@@ -384,6 +431,15 @@ mod tests {
         assert!(!retry_requested(just_before, true, false, false));
         assert!(!retry_requested(just_before, false, true, false));
         assert!(!retry_requested(just_before, false, false, true));
+    }
+
+    #[test]
+    fn game_over_fits_the_screen() {
+        assert_eq!(ranking_rows(720.0), ranking::MAX_ROWS);
+        let rows = ranking_rows(400.0);
+        assert!(rows < ranking::MAX_ROWS);
+        assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 400.0);
+        assert_eq!(ranking_rows(100.0), 0);
     }
 
     #[test]

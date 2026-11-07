@@ -259,6 +259,7 @@ async fn main() {
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now, &sprites, &fonts, &name_font, world_per_pixel);
         game.draw(heading, &sprites, world_per_pixel);
+        playfield.draw_offscreen_marker(origin, game.player.position, player::PLAYER_RADIUS);
 
         set_default_camera();
         // ワールドを映す範囲の外は黒く塗り、横長の画面でも先が見える幅を変えない。

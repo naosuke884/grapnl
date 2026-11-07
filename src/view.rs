@@ -19,9 +19,6 @@ pub const MAX_VIEW_WIDTH: f32 = VIEW_HEIGHT * MAX_ASPECT;
 pub const MAX_ZOOM: f32 = 1.5;
 /// これより背の高い画面では寄らない。ここから低くなるほど寄り、`MAX_ZOOM` で止める。
 const ZOOM_FROM_HEIGHT: f32 = 640.0;
-/// 寄って縦の全体を映せないときは、自機が映す範囲の上からこの割合より下へ行ったときだけ下へ追う。
-/// 振り子で揺れる程度では動かさず、天井を映したままにする。
-const FOLLOW_DOWN_FROM: f32 = 0.6;
 
 /// 画面の高さ（論理ピクセル）から、寄る倍率を決める。
 fn zoom_for(screen_h: f32) -> f32 {
@@ -72,11 +69,29 @@ impl Playfield {
 
     /// `rect` の左上に映すワールドの点。`camera_x` は寄らない画面でのカメラの左端、`focus` は自機の位置。
     /// 寄る画面では、自機の横の位置を変えずに寄る（自機から左端までの幅を `zoom` で割る）。
-    /// 縦は天井を映したままにし、自機が下へ落ちていくときだけ追う。寄らない画面では `(camera_x, 0)`。
+    /// 縦は動かさず、天井（y = 0）から映す。縦にカメラが動くと、狙った所が押すまでにずれて撃ちにくい。
+    /// 寄ると下の方は映らないが、そこまで落ちると天井にもブロックにもほとんど届かない（`draw_offscreen_marker`）。
+    /// 寄らない画面では `(camera_x, 0)`。
     pub fn origin(&self, camera_x: f32, focus: Vec2) -> Vec2 {
-        let x = focus.x - (focus.x - camera_x) / self.zoom;
-        let y = (focus.y - self.world.y * FOLLOW_DOWN_FROM).clamp(0.0, VIEW_HEIGHT - self.world.y);
-        vec2(x, y)
+        vec2(focus.x - (focus.x - camera_x) / self.zoom, 0.0)
+    }
+
+    /// 自機が映す範囲より下にいるときに、画面の下端の自機の真上に下向きの印を出す。
+    /// ワールド座標のカメラ（`camera(origin)`）の下で呼ぶ。
+    pub fn draw_offscreen_marker(&self, origin: Vec2, position: Vec2, radius: f32) {
+        let bottom = origin.y + self.world.y;
+        if position.y - radius <= bottom {
+            return;
+        }
+        let px = self.world_per_pixel();
+        let (half, height, margin) = (7.0 * px, 9.0 * px, 4.0 * px);
+        let tip = vec2(position.x, bottom - margin);
+        draw_triangle(
+            tip,
+            tip + vec2(-half, -height),
+            tip + vec2(half, -height),
+            Color::from_rgba(240, 240, 250, 220),
+        );
     }
 
     /// 画面の 1 ピクセル（論理ピクセル）に映るワールドの幅。
@@ -279,29 +294,25 @@ mod tests {
     }
 
     #[test]
-    fn zoomed_view_keeps_the_player_in_place_and_follows_falls() {
+    fn zoomed_view_keeps_the_player_in_place_and_the_ceiling_in_view() {
         let p = playfield(844.0, 390.0);
         let camera_x = 5000.0;
         // 自機を中心に寄るので、左端から自機までの幅は寄った分だけ狭まる。
         let focus = vec2(6200.0, 400.0);
         let origin = p.origin(camera_x, focus);
         assert_close(focus.x - origin.x, (focus.x - camera_x) / MAX_ZOOM);
-        // 天井の近くでは上端を映し、落ちていくと追い、終わる高さより下は映さない。
-        assert_eq!(origin.y, 0.0);
-        let falling = p.origin(camera_x, vec2(6200.0, 1200.0)).y;
-        assert!(falling > 0.0);
-        assert_close(
-            p.origin(camera_x, vec2(6200.0, 5000.0)).y,
-            VIEW_HEIGHT - p.world.y,
-        );
+        // 落ちていっても縦は動かさず、天井から映す。
+        for y in [400.0, 1200.0, 5000.0] {
+            assert_eq!(p.origin(camera_x, vec2(6200.0, y)).y, 0.0);
+        }
         // カメラは `origin` から `world` の大きさを `rect` に映す。
-        let camera = p.camera(vec2(origin.x, falling));
+        let camera = p.camera(origin);
         let top_left = to_world(&p, &camera, Vec2::ZERO);
         assert_close(top_left.x, origin.x);
-        assert_close(top_left.y, falling);
+        assert_close(top_left.y, 0.0);
         let bottom_right = to_world(&p, &camera, p.screen);
         assert_close(bottom_right.x, origin.x + p.world.x);
-        assert_close(bottom_right.y, falling + p.world.y);
+        assert_close(bottom_right.y, p.world.y);
     }
 
     #[test]

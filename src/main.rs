@@ -1,3 +1,4 @@
+mod daily;
 mod enemy;
 mod game;
 mod generator;
@@ -279,6 +280,14 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
             Color::from_rgba(180, 190, 205, 255),
         );
     }
+    // 日替わりのコース。ゲームオーバーの画面を出している間も、毎フレーム残り時間を進める。
+    text.draw_centered_steady(
+        &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
+        center.x,
+        center.y + 142.0,
+        22.0,
+        Color::from_rgba(150, 200, 235, 255),
+    );
 }
 
 #[cfg(test)]

@@ -1,12 +1,16 @@
+mod daily;
 mod enemy;
 mod game;
 mod generator;
 mod hitstop;
 mod level;
 mod menu;
+mod page;
 mod particles;
+mod pause;
 mod player;
 mod realtime;
+mod score_popup;
 mod sfx;
 mod shadow;
 mod shake;
@@ -17,6 +21,7 @@ use macroquad::prelude::*;
 use game::{Game, VIEW_HEIGHT};
 use hitstop::HitStop;
 use menu::{Action, Menu};
+use pause::Pause;
 use player::WireInput;
 use roommate_sdk::DeleteStatus;
 use shadow::{Shadows, State};
@@ -66,6 +71,7 @@ async fn main() {
     let mut hit_stop = HitStop::default();
     // 遊んでいない間に出している画面。開いたときはタイトルから始め、遊んでいる間は None。
     let mut menu = Some(Menu::Title);
+    let mut pause = Pause::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -73,13 +79,36 @@ async fn main() {
         shake.update(frame_time);
         let camera = view_camera(game.camera_x);
         let aim = camera.screen_to_world(mouse_position().into());
-        wire_pressed |= is_mouse_button_pressed(MouseButton::Left);
-        boost_pressed |= is_mouse_button_pressed(MouseButton::Right);
-        let clicked = is_mouse_button_pressed(MouseButton::Left);
+        let left_click = is_mouse_button_pressed(MouseButton::Left);
+        let right_click = is_mouse_button_pressed(MouseButton::Right);
+        wire_pressed |= left_click;
+        boost_pressed |= right_click;
+        let clicked = left_click;
         let screen = vec2(screen_width(), screen_height());
         let mouse = Vec2::from(mouse_position());
         let measure = |label: &str, size: f32| text.width(label, size);
         let delete_status = roommate_sdk::delete_status();
+        // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
+        // タイトルなどの画面とゲームオーバーの間は止めない。
+        match pause.update(
+            game.over || menu.is_some(),
+            is_key_pressed(KeyCode::Escape),
+            left_click || right_click,
+            page::lost_focus(),
+        ) {
+            pause::Frame::Running => {}
+            pause::Frame::Paused => {
+                // 止まっている間に押した入力は、再開した後に使わない。
+                wire_pressed = false;
+                boost_pressed = false;
+            }
+            pause::Frame::Resumed => {
+                // 再開に使ったクリックでワイヤーを撃たない。止まっていた時間も追いかけない。
+                wire_pressed = false;
+                boost_pressed = false;
+                accumulator = 0.0;
+            }
+        }
         if let Some(current) = menu {
             // 画面のボタンを押したクリックでゲームが始まったり、ワイヤーを撃ったりしないよう、
             // 遊んでいない間のクリックはここで使い切る。
@@ -131,7 +160,7 @@ async fn main() {
             }
             wire_pressed = false;
             boost_pressed = false;
-        } else {
+        } else if !pause.paused() {
             // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
             accumulator += hit_stop.consume(frame_time);
             while accumulator >= FIXED_DT && !game.over && !hit_stop.active() {
@@ -165,8 +194,8 @@ async fn main() {
             }
         }
         shadows.forget_stale(now);
-        // 終わった後とタイトルなどの画面の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over && menu.is_none() {
+        // 終わった後、タイトルなどの画面、一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
+        if !game.over && menu.is_none() && !pause.paused() {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -183,7 +212,7 @@ async fn main() {
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now);
-        game.draw();
+        game.draw(&text);
 
         set_default_camera();
         text.draw(
@@ -199,7 +228,7 @@ async fn main() {
             Color::from_rgba(180, 190, 205, 255),
         );
         text.draw(
-            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト",
+            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
             16.0,
             screen_height() - 16.0,
             22.0,
@@ -246,6 +275,9 @@ async fn main() {
             if let Some(meters) = game.offscreen_hazard_distance() {
                 draw_offscreen_hazard(&text, meters);
             }
+        }
+        if pause.paused() {
+            draw_paused(&text);
         }
         if game.over {
             draw_game_over(&text, &game, since_over, &best, delete_status);
@@ -296,6 +328,25 @@ fn draw_offscreen_hazard(text: &Text, meters: f32) {
         color,
     );
     text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
+}
+
+fn draw_paused(text: &Text) {
+    draw_rectangle(
+        0.0,
+        0.0,
+        screen_width(),
+        screen_height(),
+        Color::from_rgba(0, 0, 0, 140),
+    );
+    let center = vec2(screen_width(), screen_height()) / 2.0;
+    text.draw_centered("一時停止中", center.x, center.y - 10.0, 56.0, WHITE);
+    text.draw_centered(
+        "Esc かクリックで再開",
+        center.x,
+        center.y + 34.0,
+        24.0,
+        Color::from_rgba(180, 190, 205, 255),
+    );
 }
 
 /// 自己ベストの表示。まだ無いとき（初めて遊ぶ前やデータを消した後）は「なし」と出し、0 点と見分ける。
@@ -352,11 +403,19 @@ fn draw_game_over(
             Color::from_rgba(180, 190, 205, 255),
         );
     }
+    // 日替わりのコース。ゲームオーバーの画面を出している間も、毎フレーム残り時間を進める。
+    text.draw_centered_steady(
+        &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
+        center.x,
+        center.y + 142.0,
+        22.0,
+        Color::from_rgba(150, 200, 235, 255),
+    );
     if delete_status == DeleteStatus::Done {
         text.draw_centered(
             menu::NOT_RECORDED,
             center.x,
-            center.y + 142.0,
+            center.y + 172.0,
             22.0,
             menu::NOTICE,
         );

@@ -58,6 +58,30 @@ impl Text {
         );
     }
 
+    /// 中央に揃えて描くが、数字がどれも「0」の幅だとして位置を決める。
+    /// 毎秒変わる数字（残り時間など）で、文字の列が左右に揺れないようにする。
+    pub fn draw_centered_steady(
+        &self,
+        text: &str,
+        center_x: f32,
+        baseline_y: f32,
+        font_size: f32,
+        color: Color,
+    ) {
+        let template: String = text
+            .chars()
+            .map(|c| if c.is_ascii_digit() { '0' } else { c })
+            .collect();
+        let dimensions = measure_text(&template, Some(&self.font), font_size as u16, 1.0);
+        self.draw(
+            text,
+            center_x - dimensions.width / 2.0,
+            baseline_y,
+            font_size,
+            color,
+        );
+    }
+
     /// `center_y` が文字の縦の中心になるように描く。`x` は左端。
     pub fn draw_y_centered(&self, text: &str, x: f32, center_y: f32, font_size: f32, color: Color) {
         let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
@@ -68,6 +92,34 @@ impl Text {
             center_y + dimensions.offset_y - dimensions.height / 2.0,
             font_size,
             color,
+        );
+    }
+}
+
+impl Text {
+    /// 画面のピクセルではなくカメラの座標で、`center` が文字の中心になるように描く。
+    /// 文字の画像は `raster`（`SIZES` のどれか）の大きさで作り、`scale` 倍して描く。
+    /// ワールド座標のカメラの下では、`scale` に画面の 1 ピクセルに映るワールドの幅を掛けて渡す。
+    pub fn draw_scaled_centered(
+        &self,
+        text: &str,
+        center: Vec2,
+        raster: u16,
+        scale: f32,
+        color: Color,
+    ) {
+        let dimensions = measure_text(text, Some(&self.font), raster, scale);
+        draw_text_ex(
+            text,
+            center.x - dimensions.width / 2.0,
+            center.y + dimensions.offset_y - dimensions.height / 2.0,
+            TextParams {
+                font: Some(&self.font),
+                font_size: raster,
+                font_scale: scale,
+                color,
+                ..Default::default()
+            },
         );
     }
 }
@@ -149,7 +201,8 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 14] = [
+    const SOURCES: [(&str, &str); 18] = [
+        ("daily.rs", include_str!("daily.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),
@@ -157,9 +210,12 @@ mod tests {
         ("level.rs", include_str!("level.rs")),
         ("main.rs", include_str!("main.rs")),
         ("menu.rs", include_str!("menu.rs")),
+        ("page.rs", include_str!("page.rs")),
         ("particles.rs", include_str!("particles.rs")),
+        ("pause.rs", include_str!("pause.rs")),
         ("player.rs", include_str!("player.rs")),
         ("realtime.rs", include_str!("realtime.rs")),
+        ("score_popup.rs", include_str!("score_popup.rs")),
         ("sfx.rs", include_str!("sfx.rs")),
         ("shadow.rs", include_str!("shadow.rs")),
         ("shake.rs", include_str!("shake.rs")),

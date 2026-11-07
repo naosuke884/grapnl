@@ -53,6 +53,19 @@ impl Text {
             color,
         );
     }
+
+    /// `center_y` が文字の縦の中心になるように描く。`x` は左端。
+    pub fn draw_y_centered(&self, text: &str, x: f32, center_y: f32, font_size: f32, color: Color) {
+        let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
+        // draw の y はベースライン。文字はそこから offset_y 上、height の高さに収まる。
+        self.draw(
+            text,
+            x,
+            center_y + dimensions.offset_y - dimensions.height / 2.0,
+            font_size,
+            color,
+        );
+    }
 }
 
 /// 絞ったフォントに入っている文字。

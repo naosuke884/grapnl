@@ -355,8 +355,8 @@ dependencies = [
 
 [[package]]
 name = "roommate-sdk"
-version = "0.3.0"
-source = "git+https://github.com/naosuke884/roommate?tag=roommate-sdk-v0.3.0#2820b1517f9a09062581bc657047c9d5593a4c0b"
+version = "0.4.1"
+source = "git+https://github.com/naosuke884/roommate?tag=roommate-sdk-v0.4.1#1875e8e34ffdba38d809f011fdad39b1712b405e"
 
 [[package]]
 name = "simd-adler32"

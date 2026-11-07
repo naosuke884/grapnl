@@ -17,6 +17,8 @@ Rust + [macroquad](https://github.com/not-fl3/macroquad) で作る、ブラウ�
 - Esc: 一時停止する。もう一度 Esc かクリックで再開する。タブを離れたときやウィンドウのフォーカスが外れたときも止まる（ゲームオーバーの画面では止まらない）
 - ワイヤーを敵に当てると倒せて、その場所へ引き寄せられながら上へ大きく跳ねる
 - 左から赤い領域がだんだん速く迫ってくる。追いつかれるか、下へ落ちるか、敵に触れると終わり
+- 開くとタイトルを出し、クリックで始める。ゲームオーバーの画面の右下の「タイトルへ」でタイトルに戻る
+- タイトルの右下の「データを消す」で、匿名 ID と roommate の全ゲームのスコアを消せる（roommate-sdk の `request_delete`）。確認の画面で「消す」を選ぶと消し、結果を出す。消した後は、ページを開き直すまでスコアを記録しない
 
 ## 必要なもの
 
@@ -67,7 +69,7 @@ python3 -m http.server 8080 --directory web
 
 - `index.html` — キャンバスをウィンドウいっぱいに広げ、右クリックメニューを出さない
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
-- `roommate-sdk.js` — roommate-sdk。匿名 ID・スコアの送信・自己ベストを受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
+- `roommate-sdk.js` — roommate-sdk。匿名 ID・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
 - `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ
 - `grapnl.wasm` — `./scripts/build-wasm.sh` が生成する（gitignore 済み）
 

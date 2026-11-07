@@ -5,12 +5,14 @@ mod level;
 mod player;
 mod realtime;
 mod shadow;
+mod text;
 
 use macroquad::prelude::*;
 
 use game::{Game, VIEW_HEIGHT};
 use player::WireInput;
 use shadow::{Shadows, State};
+use text::Text;
 
 /// 更新は固定の刻みで回し、画面のリフレッシュレートで手触りが変わらないようにする。
 const FIXED_DT: f32 = 1.0 / 120.0;
@@ -36,6 +38,7 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    let text = Text::load();
     let mut game = Game::new();
     realtime::join(&game::room_key(game.seed()));
     let mut shadows = Shadows::default();
@@ -111,9 +114,9 @@ async fn main() {
         game.draw();
 
         set_default_camera();
-        draw_text(
-            format!(
-                "score {}   {:.0} m   kills {}",
+        text.draw(
+            &format!(
+                "スコア {}   {:.0} m   撃破 {}",
                 game.score(),
                 game.distance(),
                 game.kills
@@ -123,15 +126,15 @@ async fn main() {
             28.0,
             Color::from_rgba(180, 190, 205, 255),
         );
-        draw_text(
-            "left click: shoot / pull back wire   right click: boost",
+        text.draw(
+            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト",
             16.0,
             screen_height() - 16.0,
             22.0,
             Color::from_rgba(150, 160, 175, 200),
         );
-        draw_text(
-            format!("best {high_score}"),
+        text.draw(
+            &format!("自己ベスト {high_score}"),
             16.0,
             60.0,
             22.0,
@@ -141,25 +144,25 @@ async fn main() {
         let cooldown = game.player.boost_cooldown;
         let (label, color) = if cooldown > 0.0 {
             (
-                format!("boost {cooldown:.1}"),
+                format!("ブースト {cooldown:.1}"),
                 Color::from_rgba(140, 150, 165, 255),
             )
         } else {
             (
-                "boost ready".to_owned(),
+                "ブースト OK".to_owned(),
                 Color::from_rgba(140, 220, 160, 255),
             )
         };
-        draw_text(label, 16.0, 116.0, 22.0, color);
+        text.draw(&label, 16.0, 116.0, 22.0, color);
         if game.chain > 0 {
             let multiplier = game.next_multiplier();
             let max = if multiplier == game::MAX_MULTIPLIER {
-                " max"
+                " 最大"
             } else {
                 ""
             };
-            draw_text(
-                format!("chain x{multiplier}{max}"),
+            text.draw(
+                &format!("連鎖 x{multiplier}{max}"),
                 16.0,
                 88.0,
                 28.0,
@@ -167,7 +170,7 @@ async fn main() {
             );
         }
         if game.over {
-            draw_game_over(&game, since_over, high_score);
+            draw_game_over(&text, &game, since_over, high_score);
         }
 
         next_frame().await
@@ -187,7 +190,7 @@ fn view_camera(camera_x: f32) -> Camera2D {
     }
 }
 
-fn draw_game_over(game: &Game, since_over: f32, high_score: u32) {
+fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {
     draw_rectangle(
         0.0,
         0.0,
@@ -196,10 +199,10 @@ fn draw_game_over(game: &Game, since_over: f32, high_score: u32) {
         Color::from_rgba(0, 0, 0, 140),
     );
     let center = vec2(screen_width(), screen_height()) / 2.0;
-    draw_centered_text("GAME OVER", center.x, center.y - 20.0, 56.0, WHITE);
-    draw_centered_text(
+    text.draw_centered("ゲームオーバー", center.x, center.y - 20.0, 56.0, WHITE);
+    text.draw_centered(
         &format!(
-            "score {}   ({:.0} m, kills {})   best {high_score}",
+            "スコア {}（{:.0} m・撃破 {}）   自己ベスト {high_score}",
             game.score(),
             game.distance(),
             game.kills
@@ -210,23 +213,12 @@ fn draw_game_over(game: &Game, since_over: f32, high_score: u32) {
         WHITE,
     );
     if since_over >= RETRY_DELAY {
-        draw_centered_text(
-            "click to retry",
+        text.draw_centered(
+            "クリックでもう一度",
             center.x,
             center.y + 64.0,
             24.0,
             Color::from_rgba(180, 190, 205, 255),
         );
     }
-}
-
-fn draw_centered_text(text: &str, center_x: f32, baseline_y: f32, font_size: f32, color: Color) {
-    let dimensions = measure_text(text, None, font_size as u16, 1.0);
-    draw_text(
-        text,
-        center_x - dimensions.width / 2.0,
-        baseline_y,
-        font_size,
-        color,
-    );
 }

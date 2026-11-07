@@ -1,0 +1,198 @@
+//! 画面のどこにワールドを映すか。
+//! 同じ日は全員が同じコースでスコアを比べるので、画面の形で先が見える幅を変えない。
+//! 16:9 より横長の画面では、左右に黒い余白を付けて、映す横幅を 16:9 の幅にとどめる。
+//! 16:9 より縦長の画面は、縦の高さを固定したまま横幅を縦横比で決める（余白は付けない）。
+
+use macroquad::prelude::*;
+
+use crate::game::VIEW_HEIGHT;
+
+/// これより横長の画面では、横幅を増やさず左右に余白を付ける。
+pub const MAX_ASPECT: f32 = 16.0 / 9.0;
+/// 映すワールドの横幅の上限。16:9 の画面に映す横幅（約 3300）。
+pub const MAX_VIEW_WIDTH: f32 = VIEW_HEIGHT * MAX_ASPECT;
+
+/// ワールドを映す範囲。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Playfield {
+    /// ワールドを映す画面上の長方形（論理ピクセル）。縦は常に画面いっぱい。
+    pub rect: Rect,
+    /// `rect` に映すワールドの幅と高さ。
+    pub world: Vec2,
+    /// 画面全体の大きさ（論理ピクセル）。
+    pub screen: Vec2,
+}
+
+/// 画面の大きさ（論理ピクセル）から、ワールドを映す範囲を決める。
+pub fn playfield(screen_w: f32, screen_h: f32) -> Playfield {
+    let aspect = screen_w / screen_h;
+    // 16:9 ちょうどでは画面いっぱいを返す。幅を掛け算で出し直すと、誤差で 1 px の余白が出る。
+    if aspect <= MAX_ASPECT {
+        return Playfield {
+            rect: Rect::new(0.0, 0.0, screen_w, screen_h),
+            world: vec2(VIEW_HEIGHT * aspect, VIEW_HEIGHT),
+            screen: vec2(screen_w, screen_h),
+        };
+    }
+    let width = screen_h * MAX_ASPECT;
+    Playfield {
+        rect: Rect::new((screen_w - width) / 2.0, 0.0, width, screen_h),
+        world: vec2(MAX_VIEW_WIDTH, VIEW_HEIGHT),
+        screen: vec2(screen_w, screen_h),
+    }
+}
+
+impl Playfield {
+    /// 今の画面の大きさで決める。
+    pub fn current() -> Self {
+        playfield(screen_width(), screen_height())
+    }
+
+    /// 画面の上下を `VIEW_HEIGHT` に合わせ、`rect` の左端に `camera_x` を映すカメラ。
+    /// カメラ自体は画面全体に映し、余白の部分は後から黒く塗って隠す（`draw_bars`）。
+    /// `Camera2D::viewport` は実ピクセルで指定し、高 DPI の画面で `screen_to_world` とずれるので使わない。
+    /// 画面全体に映すので、`screen_to_world` は余白の中のクリックもそのまま変換できる（ワールドの外を指す）。
+    /// ワールドは y 下向きで、y = 0 を画面の上端に映す。
+    /// `Camera2D::from_display_rect` は画面に描くと上下が逆になるので使わない。
+    pub fn camera(&self, camera_x: f32) -> Camera2D {
+        let size = vec2(self.screen.x * self.world.y / self.rect.h, self.world.y);
+        // 余白は左右同じ幅なので、画面の中央が `rect` の中央になる。
+        Camera2D {
+            target: vec2(camera_x + self.world.x / 2.0, self.world.y / 2.0),
+            zoom: vec2(2.0 / size.x, 2.0 / size.y),
+            ..Default::default()
+        }
+    }
+
+    /// 画面の文字やボタンを描くカメラ。画面の座標と同じ大きさで、`rect` の左上を原点にする。
+    pub fn hud_camera(&self) -> Camera2D {
+        Camera2D {
+            target: self.screen / 2.0 - self.rect.point(),
+            zoom: vec2(2.0 / self.screen.x, 2.0 / self.screen.y),
+            ..Default::default()
+        }
+    }
+
+    /// 左右の余白を黒く塗る。ワールドを描いた後、画面の座標で呼ぶ。
+    pub fn draw_bars(&self) {
+        if self.rect.x <= 0.0 {
+            return;
+        }
+        let h = self.screen.y;
+        draw_rectangle(0.0, 0.0, self.rect.x, h, BLACK);
+        let right = self.rect.right();
+        draw_rectangle(right, 0.0, self.screen.x - right, h, BLACK);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(a: f32, b: f32) {
+        assert!((a - b).abs() < 1e-3, "{a} != {b}");
+    }
+
+    #[test]
+    fn sixteen_by_nine_fills_the_screen() {
+        let p = playfield(1280.0, 720.0);
+        assert_eq!(p.rect, Rect::new(0.0, 0.0, 1280.0, 720.0));
+        assert_close(p.world.x, MAX_VIEW_WIDTH);
+        assert_eq!(p.world.y, VIEW_HEIGHT);
+        // 高解像度の 16:9 も同じ。
+        let p = playfield(1920.0, 1080.0);
+        assert_eq!(p.rect, Rect::new(0.0, 0.0, 1920.0, 1080.0));
+    }
+
+    #[test]
+    fn wider_than_sixteen_by_nine_gets_side_bars() {
+        // 21:9 と 32:9。
+        for (w, h) in [(2560.0, 1080.0), (5120.0, 1440.0)] {
+            let p = playfield(w, h);
+            assert_eq!(p.world, vec2(MAX_VIEW_WIDTH, VIEW_HEIGHT));
+            assert_close(p.rect.w / p.rect.h, MAX_ASPECT);
+            assert_eq!(p.rect.y, 0.0);
+            assert_eq!(p.rect.h, h);
+            // 左右の余白は同じ幅。
+            assert_close(p.rect.x, w - p.rect.right());
+            assert!(p.rect.x > 0.0);
+        }
+        let p = playfield(2560.0, 1080.0);
+        assert_close(p.rect.w, 1920.0);
+        assert_close(p.rect.x, 320.0);
+    }
+
+    #[test]
+    fn taller_than_sixteen_by_nine_stays_as_before() {
+        // 4:3 と縦長の画面は余白を付けず、横幅を縦横比で狭める。
+        for (w, h) in [(1024.0, 768.0), (390.0, 844.0)] {
+            let p = playfield(w, h);
+            assert_eq!(p.rect, Rect::new(0.0, 0.0, w, h));
+            assert_close(p.world.x, VIEW_HEIGHT * w / h);
+            assert!(p.world.x < MAX_VIEW_WIDTH);
+        }
+    }
+
+    /// 画面の座標（論理ピクセル）を、`camera` で写した先のワールド座標に直す。`screen_to_world` と同じ計算。
+    fn to_world(p: &Playfield, camera: &Camera2D, point: Vec2) -> Vec2 {
+        let ndc = vec2(
+            point.x / p.screen.x * 2.0 - 1.0,
+            1.0 - point.y / p.screen.y * 2.0,
+        );
+        camera
+            .matrix()
+            .inverse()
+            .transform_point3(ndc.extend(0.0))
+            .truncate()
+    }
+
+    #[test]
+    fn camera_maps_the_playfield_to_the_view() {
+        let camera_x = 5000.0;
+        for (w, h) in [
+            (1280.0, 720.0),
+            (2560.0, 1080.0),
+            (5120.0, 1440.0),
+            (1024.0, 768.0),
+        ] {
+            let p = playfield(w, h);
+            let camera = p.camera(camera_x);
+            let top_left = to_world(&p, &camera, p.rect.point());
+            assert_close(top_left.x, camera_x);
+            assert_close(top_left.y, 0.0);
+            let bottom_right = to_world(&p, &camera, vec2(p.rect.right(), p.rect.bottom()));
+            assert_close(bottom_right.x, camera_x + p.world.x);
+            assert_close(bottom_right.y, VIEW_HEIGHT);
+        }
+    }
+
+    #[test]
+    fn clicks_in_the_bars_aim_outside_the_view() {
+        let p = playfield(2560.0, 1080.0);
+        let camera = p.camera(0.0);
+        assert!(to_world(&p, &camera, vec2(10.0, 500.0)).x < 0.0);
+        assert!(to_world(&p, &camera, vec2(2550.0, 500.0)).x > MAX_VIEW_WIDTH);
+    }
+
+    #[test]
+    fn hud_origin_is_the_top_left_of_the_playfield() {
+        let p = playfield(2560.0, 1080.0);
+        let hud = p.hud_camera();
+        let origin = to_world(&p, &hud, p.rect.point());
+        assert_close(origin.x, 0.0);
+        assert_close(origin.y, 0.0);
+        // 画面の座標と同じ大きさで描く。
+        let corner = to_world(&p, &hud, vec2(p.rect.right(), p.rect.bottom()));
+        assert_close(corner.x, p.rect.w);
+        assert_close(corner.y, p.rect.h);
+    }
+
+    #[test]
+    fn visible_width_never_exceeds_the_cap() {
+        for w in [
+            320.0, 1280.0, 1281.0, 1680.0, 2560.0, 3440.0, 5120.0, 10_000.0,
+        ] {
+            assert!(playfield(w, 720.0).world.x <= MAX_VIEW_WIDTH);
+        }
+    }
+}

@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use crate::enemy::Enemies;
 use crate::generator::Generator;
 use crate::level::Level;
+use crate::particles::Particles;
 use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 
 /// 自機がこの高さより下へ落ちたら終わり。天井の下 (y = 120 前後) からかなり下まで落ちられる。
@@ -38,6 +39,27 @@ const HAZARD_MAX_SPEED: f32 = 450.0;
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
+/// 更新の中で起きたこと。音やパーティクルなど、判定に関わらない演出は `Game::events` からこれを読んで出す。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Event {
+    /// ワイヤーを撃った。刺さったときは続けて `WireAttached` も積む。
+    WireShot,
+    /// ワイヤーが天井やブロックに刺さった。`at` は刺さった点、`normal` は地形の外（自機の側）へ向く向き。
+    WireAttached {
+        at: Vec2,
+        normal: Vec2,
+    },
+    /// 刺さっていたワイヤーを手元へ戻した。
+    WirePulledBack,
+    /// ワイヤーで敵を倒した。`at` はワイヤーが敵に当たった点、`multiplier` はこの 1 体に掛かった連鎖の倍率。
+    EnemyKilled {
+        at: Vec2,
+        multiplier: u32,
+    },
+    Boosted,
+    GameOver,
+}
+
 /// 1 回のプレイの状態。
 pub struct Game {
     pub level: Level,
@@ -64,6 +86,11 @@ pub struct Game {
     seed: u64,
     /// 始めてからの時間（秒）。スコアと一緒に送り、ありえない速さのスコアをサーバーが見分けるのに使う。
     pub elapsed: f32,
+    /// この `step` で起きた出来事。次の `step` の始めに空になる（`Vec` の容量は残す）。
+    /// 1 フレームに `step` が複数回走るので、音や画面揺れは `step` の直後にここを読む。
+    /// 破片もここから飛ぶ。
+    pub events: Vec<Event>,
+    particles: Particles,
 }
 
 impl Game {
@@ -103,10 +130,20 @@ impl Game {
             over: false,
             seed,
             elapsed: 0.0,
+            events: Vec::with_capacity(8),
+            particles: Particles::new(seed),
         }
     }
 
+    /// 出来事を残し、破片を出すものなら同じ場所から出す。
+    fn emit(&mut self, event: Event) {
+        self.events.push(event);
+        self.particles.spawn(event);
+    }
+
     pub fn step(&mut self, mut input: WireInput, dt: f32) {
+        // 空にしても容量は残る。毎フレーム新しい `Vec` は作らない。
+        self.events.clear();
         if self.over {
             return;
         }
@@ -117,21 +154,53 @@ impl Game {
         self.level.remove_before(front - KEEP_BEHIND);
 
         self.aim = input.aim;
+        // 戻る途中のクリックは、戻り切ったフレームのクリックとして扱う。
+        // 向きは押したときではなく、このフレームのカーソル。
+        let anchored_before = self.player.anchor.is_some();
+        if self.player.resolve_wire(input.pressed, dt) {
+            input.pressed = true;
+        }
+        if anchored_before && self.player.anchor.is_none() {
+            self.emit(Event::WirePulledBack);
+        }
         // 撃ったワイヤーが地形より手前の敵に当たったら、その敵を倒し、引き寄せられながら上へ跳ねる。
         // 天井やブロックに刺すか、何もない所へ撃つと連鎖が切れる。ワイヤーを戻すだけなら切れない。
+        // 敵の判定は、ワイヤーが手元にあって撃つフレームだけ行う。
         if input.pressed && self.player.can_shoot() {
             if let Some((index, point)) = self.enemy_target(input.aim) {
+                let multiplier = self.next_multiplier();
                 self.enemies.list.swap_remove(index);
                 self.kills += 1;
-                self.kill_points += KILL_POINTS * self.next_multiplier();
+                self.kill_points += KILL_POINTS * multiplier;
                 self.chain += 1;
+                self.emit(Event::EnemyKilled {
+                    at: point,
+                    multiplier,
+                });
                 self.player.pull_toward(point);
                 input.pressed = false;
             } else {
                 self.chain = 0;
             }
         }
-        self.player.update(input, &self.level, dt);
+        // ワイヤーとブーストの出来事は、自機の更新の前後の状態を比べて拾う。
+        // 刺さっていなかった状態から刺さったときだけ火花を出す。最初から刺さっている状態では出さない。
+        let was_anchored = self.player.anchor.is_some();
+        let cooldown = self.player.boost_cooldown;
+        if input.pressed && self.player.can_shoot() {
+            self.emit(Event::WireShot);
+        }
+        self.player.finish_update(input, &self.level, dt);
+        if let (false, Some(anchor)) = (was_anchored, self.player.anchor) {
+            let normal = (self.player.position - anchor.point).normalize_or_zero();
+            self.emit(Event::WireAttached {
+                at: anchor.point,
+                normal,
+            });
+        }
+        if self.player.boost_cooldown > cooldown {
+            self.emit(Event::Boosted);
+        }
         self.best_x = self.best_x.max(self.player.position.x);
         let player = self.player.position;
         let front = self.best_x - FOLLOW_OFFSET;
@@ -145,7 +214,9 @@ impl Game {
         let hit = self.enemies.any_touching(player, PLAYER_HURT_RADIUS);
         if fell || hit || caught {
             self.over = true;
+            self.emit(Event::GameOver);
         }
+        self.particles.update(dt);
     }
 
     /// `aim` の方向へ撃ったとき、地形より手前で当たる敵の番号と当たる点。
@@ -173,6 +244,16 @@ impl Game {
     /// 開始位置から最も右へ進んだ距離（m）。
     pub fn distance(&self) -> f32 {
         (self.best_x - self.start_x) / UNITS_PER_METER
+    }
+
+    /// 迫ってくる領域が画面の左端より外にあるとき、自機に触れるまでの距離（m）。
+    /// 境目が画面に映っているときは `None`。見えないあいだ、左端にこの距離を出す。
+    pub fn offscreen_hazard_distance(&self) -> Option<f32> {
+        if self.hazard_x >= self.camera_x {
+            return None;
+        }
+        let world = self.player.position.x - PLAYER_RADIUS - self.hazard_x;
+        Some((world / UNITS_PER_METER).max(0.0))
     }
 
     pub fn draw(&self) {
@@ -215,6 +296,8 @@ impl Game {
             }
         }
         self.player.draw();
+        // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
+        self.particles.draw();
     }
 }
 
@@ -235,7 +318,8 @@ pub fn room_key(seed: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enemy::Enemy;
+    use crate::enemy::{Enemy, ENEMY_COLOR, ENEMY_RADIUS};
+    use crate::particles::{ParticleKind, FRAGMENT_COUNT, SPARK_COUNT};
 
     const DT: f32 = 1.0 / 120.0;
 
@@ -302,6 +386,91 @@ mod tests {
         assert!(game.player.velocity.x > 600.0);
         // 横の敵を倒しても、上へ大きく跳ねる。
         assert!(game.player.velocity.y < -600.0);
+    }
+
+    #[test]
+    fn click_while_the_wire_returns_kills_the_enemy_aimed_at_when_it_fires() {
+        let mut game = Game::with_seed(1);
+        start_retract(&mut game);
+        place_enemy(&mut game, 80.0);
+        // 敵と反対の向きでクリックしても、その場では倒さない。
+        shoot(&mut game, vec2(-1.0, 0.0));
+        assert_eq!(game.kills, 0);
+        assert!(!game.player.can_shoot());
+
+        let mut killed = false;
+        for _ in 0..40 {
+            if game.enemies.list.is_empty() {
+                break;
+            }
+            let origin = game.player.position;
+            game.enemies.list[0].position = origin + vec2(80.0, 0.0);
+            let before = game.kills;
+            game.step(
+                WireInput {
+                    aim: origin + vec2(80.0, 0.0),
+                    ..Default::default()
+                },
+                DT,
+            );
+            if game.kills > before {
+                killed = true;
+                break;
+            }
+        }
+        assert!(killed);
+        assert_eq!(game.chain, 1);
+        assert!(game.player.anchor.is_none());
+        assert!(game.player.velocity.y < -600.0);
+    }
+
+    #[test]
+    fn buffered_click_does_not_keep_the_aim_from_when_it_was_pressed() {
+        let mut game = Game::with_seed(1);
+        start_retract(&mut game);
+        place_enemy(&mut game, 80.0);
+        // 戻る途中は敵を狙ってクリックしても、その瞬間には当たらない。
+        let enemy = game.enemies.list[0].position;
+        game.step(
+            WireInput {
+                aim: enemy,
+                pressed: true,
+                ..Default::default()
+            },
+            DT,
+        );
+        assert_eq!(game.kills, 0);
+
+        game.enemies.list[0].position = vec2(-10_000.0, 10_000.0);
+        let mut attached = false;
+        for _ in 0..40 {
+            let aim = game.player.position + vec2(0.0, -1.0);
+            game.step(
+                WireInput {
+                    aim,
+                    ..Default::default()
+                },
+                DT,
+            );
+            if game.player.anchor.is_some() {
+                attached = true;
+                break;
+            }
+        }
+        assert!(attached);
+        assert_eq!(game.player.anchor.unwrap().point.y, 120.0);
+        assert_eq!(game.kills, 0);
+    }
+
+    /// 刺さっているワイヤーを戻し始める。戻っている途中で返す。
+    fn start_retract(game: &mut Game) {
+        if game.player.anchor.is_none() {
+            shoot(game, vec2(0.0, -1.0));
+        }
+        assert!(game.player.anchor.is_some());
+        shoot(game, vec2(0.0, -1.0));
+        assert!(!game.player.can_shoot());
+        assert_eq!(game.kills, 0);
     }
 
     /// 自機の右 `dx` に浮遊する敵を 1 体置く。
@@ -379,6 +548,53 @@ mod tests {
     }
 
     #[test]
+    fn wire_events_follow_shoot_attach_and_pull_back() {
+        let mut game = Game::with_seed(1);
+        // 始めから刺さっているワイヤーは、撃った出来事にしない。
+        game.step(WireInput::default(), DT);
+        assert!(game.events.is_empty());
+        shoot(&mut game, vec2(0.0, -1.0));
+        assert_eq!(game.events, vec![Event::WirePulledBack]);
+        release_wire(&mut game);
+        shoot(&mut game, vec2(0.0, -1.0));
+        let point = game.player.anchor.unwrap().point;
+        let normal = (game.player.position - point).normalize_or_zero();
+        assert_eq!(
+            game.events,
+            vec![Event::WireShot, Event::WireAttached { at: point, normal }]
+        );
+    }
+
+    #[test]
+    fn kill_events_carry_the_chain_multiplier() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        for multiplier in 1..=2 {
+            place_enemy(&mut game, 300.0);
+            let at = game.player.position + vec2(300.0 - ENEMY_RADIUS, 0.0);
+            shoot(&mut game, vec2(1.0, 0.0));
+            assert_eq!(game.events, vec![Event::EnemyKilled { at, multiplier }]);
+        }
+    }
+
+    #[test]
+    fn boost_and_game_over_are_events() {
+        let mut game = Game::with_seed(1);
+        let input = WireInput {
+            boost: true,
+            ..Default::default()
+        };
+        game.step(input, DT);
+        assert_eq!(game.events, vec![Event::Boosted]);
+        // 待ち時間の間は押してもブーストしない。
+        game.step(input, DT);
+        assert!(game.events.is_empty());
+        game.hazard_x = game.player.position.x;
+        game.step(WireInput::default(), DT);
+        assert_eq!(game.events, vec![Event::GameOver]);
+    }
+
+    #[test]
     fn touching_enemy_ends_the_game() {
         let mut game = Game::with_seed(1);
         place_enemy(&mut game, 0.0);
@@ -404,6 +620,33 @@ mod tests {
         game.hazard_x = game.player.position.x;
         game.step(WireInput::default(), DT);
         assert!(game.over);
+    }
+
+    #[test]
+    fn offscreen_hazard_distance_is_the_gap_until_it_touches_the_player() {
+        let mut game = Game::with_seed(1);
+        // 開始時は赤い領域の境目が画面の左に映っている。
+        assert!(game.hazard_x > game.camera_x);
+        assert!(game.offscreen_hazard_distance().is_none());
+
+        game.player.position.x = 8_000.0;
+        game.camera_x = game.player.position.x - FOLLOW_OFFSET;
+        let meters = game.offscreen_hazard_distance().unwrap();
+        let world = game.player.position.x - PLAYER_RADIUS - game.hazard_x;
+        assert!((meters - world / UNITS_PER_METER).abs() < 1e-4);
+
+        // 領域が近づくほど、出している距離は短くなる。
+        let before = meters;
+        game.hazard_x += 500.0;
+        assert!(game.hazard_x < game.camera_x);
+        let closer = game.offscreen_hazard_distance().unwrap();
+        assert!((before - closer - 500.0 / UNITS_PER_METER).abs() < 1e-4);
+
+        // 境目が画面の左端まで戻ったら、赤い領域自体が見えるので距離は出さない。
+        game.hazard_x = game.camera_x;
+        assert!(game.offscreen_hazard_distance().is_none());
+        game.hazard_x = game.camera_x + 10.0;
+        assert!(game.offscreen_hazard_distance().is_none());
     }
 
     #[test]
@@ -533,5 +776,108 @@ mod tests {
         // 最後が穴で終わると刺し先の右端は少し手前になるので、穴の幅の分だけ余裕を見る。
         assert!(right >= front + GENERATE_AHEAD - 1000.0);
         assert!(left >= front - KEEP_BEHIND);
+    }
+
+    #[test]
+    fn killing_an_enemy_scatters_fragments_of_its_color() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        let origin = game.player.position;
+        place_enemy(&mut game, 300.0);
+        shoot(&mut game, vec2(1.0, 0.0));
+        let at = origin + vec2(300.0 - ENEMY_RADIUS, 0.0);
+        assert_eq!(game.events, vec![Event::EnemyKilled { at, multiplier: 1 }]);
+        let bits: Vec<_> = game.particles.alive().collect();
+        assert_eq!(bits.len(), FRAGMENT_COUNT);
+        assert!(bits.iter().all(|p| p.kind == ParticleKind::Fragment));
+        assert!(bits.iter().all(|p| p.position.distance(at) < 15.0));
+        let color = bits[0].color();
+        assert_eq!(
+            (color.r, color.g, color.b),
+            (ENEMY_COLOR.r, ENEMY_COLOR.g, ENEMY_COLOR.b)
+        );
+        assert!(color.a > 0.5);
+
+        // 次の更新ではきっかけは空になる。飛んでいる破片はそのまま残る。
+        let capacity = game.events.capacity();
+        game.step(WireInput::default(), DT);
+        assert!(game.events.is_empty());
+        assert_eq!(game.events.capacity(), capacity);
+        assert!(game.particles.alive_count() > 0);
+    }
+
+    #[test]
+    fn sticking_the_wire_emits_sparks_at_the_anchor() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        game.enemies.list.clear();
+        shoot(&mut game, vec2(0.0, -1.0));
+        let anchor = game.player.anchor.unwrap();
+        let normal = (game.player.position - anchor.point).normalize_or_zero();
+        assert_eq!(
+            game.events,
+            vec![
+                Event::WireShot,
+                Event::WireAttached {
+                    at: anchor.point,
+                    normal,
+                }
+            ]
+        );
+        let sparks: Vec<_> = game.particles.alive().collect();
+        assert_eq!(sparks.len(), SPARK_COUNT);
+        assert!(sparks.iter().all(|p| p.kind == ParticleKind::Spark));
+        assert!(sparks.iter().all(|p| p.velocity.dot(normal) >= -1e-3));
+        assert!(sparks
+            .iter()
+            .all(|p| p.position.distance(anchor.point) < 20.0));
+    }
+
+    #[test]
+    fn pulling_the_wire_back_or_missing_does_not_spark() {
+        let mut game = Game::with_seed(1);
+        shoot(&mut game, vec2(0.0, -1.0));
+        assert!(game.player.anchor.is_none());
+        assert_eq!(game.events, vec![Event::WirePulledBack]);
+        assert_eq!(game.particles.alive_count(), 0);
+
+        release_wire(&mut game);
+        game.enemies.list.clear();
+        shoot(&mut game, vec2(0.0, 1.0));
+        assert!(game.player.anchor.is_none());
+        assert_eq!(game.events, vec![Event::WireShot]);
+        assert_eq!(game.particles.alive_count(), 0);
+    }
+
+    #[test]
+    fn fragments_do_not_count_as_a_hit_or_block_the_wire() {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        place_enemy(&mut game, 300.0);
+        shoot(&mut game, vec2(1.0, 0.0));
+        let at = match game.events[0] {
+            Event::EnemyKilled { at, .. } => at,
+            _ => panic!("倒したのに別の出来事が先に来た"),
+        };
+        game.player.position = at;
+        game.player.velocity = Vec2::ZERO;
+        game.enemies.list.clear();
+        game.hazard_x = f32::MIN;
+        game.step(WireInput::default(), DT);
+        assert!(!game.over);
+        assert!(game.particles.alive_count() > 0);
+
+        // 破片の中から天井へ撃っても、刺さる先は地形のまま。
+        shoot(&mut game, vec2(0.0, -1.0));
+        let anchor = game.player.anchor.expect("天井に刺さる");
+        assert!(game.events.iter().any(|impact| matches!(
+            impact,
+            Event::WireAttached { at, .. } if *at == anchor.point
+        )));
+        assert!(game
+            .particles
+            .alive()
+            .any(|p| p.kind == ParticleKind::Spark));
+        assert!(!game.over);
     }
 }

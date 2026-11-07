@@ -2,8 +2,10 @@ mod enemy;
 mod game;
 mod generator;
 mod level;
+mod particles;
 mod player;
 mod realtime;
+mod sfx;
 mod shadow;
 mod text;
 
@@ -39,6 +41,8 @@ fn window_conf() -> Conf {
 #[macroquad::main(window_conf)]
 async fn main() {
     let text = Text::load();
+    // 音は始まる前に全部読み込む。
+    let sfx = sfx::Sfx::load().await;
     let mut game = Game::new();
     realtime::join(&game::room_key(game.seed()));
     let mut shadows = Shadows::default();
@@ -85,6 +89,9 @@ async fn main() {
                     boost: boost_pressed,
                 };
                 game.step(input, FIXED_DT);
+                for event in &game.events {
+                    sfx.play(event);
+                }
                 wire_pressed = false;
                 boost_pressed = false;
                 accumulator -= FIXED_DT;
@@ -175,6 +182,12 @@ async fn main() {
                 Color::from_rgba(255, 200, 80, 255),
             );
         }
+        // 赤い領域が左の外へ出ているあいだは、左端に残り距離を出して迫り具合が分かるようにする。
+        if !game.over {
+            if let Some(meters) = game.offscreen_hazard_distance() {
+                draw_offscreen_hazard(&text, meters);
+            }
+        }
         if game.over {
             draw_game_over(&text, &game, since_over, high_score);
         }
@@ -200,6 +213,21 @@ fn view_camera(camera_x: f32) -> Camera2D {
 /// 終わった直後の `RETRY_DELAY` の間は、どの入力も受け付けない。
 fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -> bool {
     since_over >= RETRY_DELAY && (click || key_r || key_space)
+}
+
+/// 画面の左端に、左を向く矢印と、迫ってくる領域までの距離を出す。
+fn draw_offscreen_hazard(text: &Text, meters: f32) {
+    // 領域の境目の線と同じ赤。
+    let color = Color::from_rgba(240, 90, 110, 255);
+    let y = screen_height() * 0.5;
+    draw_rectangle(0.0, y - 26.0, 4.0, 52.0, color);
+    draw_triangle(
+        vec2(10.0, y),
+        vec2(26.0, y - 12.0),
+        vec2(26.0, y + 12.0),
+        color,
+    );
+    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
 }
 
 fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {

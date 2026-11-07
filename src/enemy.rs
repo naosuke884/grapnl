@@ -4,6 +4,13 @@ use macroquad::rand::RandGenerator;
 /// 敵の大きさ。ワイヤーを当てる的と、触れたら終わる判定の両方に使う。
 /// 画面を引いて広く映しているので、狙いやすいよう大きめにする。
 pub const ENEMY_RADIUS: f32 = 32.0;
+/// 敵の色。倒したときの破片もこの色にする。
+pub const ENEMY_COLOR: Color = Color {
+    r: 120.0 / 255.0,
+    g: 220.0 / 255.0,
+    b: 140.0 / 255.0,
+    a: 1.0,
+};
 /// 敵が左へ流れる速さ。
 const DRIFT_SPEED: f32 = 120.0;
 /// 上下に揺れる幅。
@@ -48,12 +55,7 @@ impl Enemy {
     }
 
     fn draw(&self) {
-        draw_circle(
-            self.position.x,
-            self.position.y,
-            ENEMY_RADIUS,
-            Color::from_rgba(120, 220, 140, 255),
-        );
+        draw_circle(self.position.x, self.position.y, ENEMY_RADIUS, ENEMY_COLOR);
     }
 }
 

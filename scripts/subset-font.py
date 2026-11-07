@@ -76,7 +76,10 @@ def main() -> int:
 
     chars: set[str] = set()
     for path in sorted((ROOT / "src").glob("*.rs")):
-        chars |= string_literal_chars(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        # テストの失敗メッセージは画面に出ないので、テストのモジュールより前だけを見る。
+        source = source.split("\n#[cfg(test)]\nmod tests", 1)[0]
+        chars |= string_literal_chars(source)
     # ASCII の表示できる文字は、数字や記号を組み立てて出すのでいつも入れる。
     chars |= {chr(code) for code in range(0x20, 0x7F)}
     text = "".join(sorted(c for c in chars if c.isprintable()))

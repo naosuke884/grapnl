@@ -6,7 +6,8 @@ publish = false
 description = "Browser 2D action game (Rust + macroquad)"
 
 [dependencies]
-macroquad = "0.4"
+# 効果音を鳴らすため audio を有効にする（macroquad 0.4 では既定で無効）。
+macroquad = { version = "0.4", features = ["audio"] }
 # 同梱フォントに入っている文字を読む。macroquad が使う fontdue と同じ版にし、二重にビルドしない。
 ttf-parser = "0.25"
 # roommate の匿名 ID・スコア・自己ベスト。web/roommate-sdk.js は同じタグのものを置く。

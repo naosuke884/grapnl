@@ -44,7 +44,7 @@ impl Sfx {
     pub fn play(&self, event: &Event) {
         let sound = match *event {
             Event::WireShot => &self.shoot,
-            Event::WireAttached(_) => &self.attach,
+            Event::WireAttached { .. } => &self.attach,
             Event::WirePulledBack => &self.retract,
             Event::EnemyKilled { multiplier, .. } => {
                 let index = (multiplier.max(1) as usize - 1).min(self.kills.len() - 1);

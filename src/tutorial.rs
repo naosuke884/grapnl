@@ -103,7 +103,7 @@ impl Tutorial {
         }
     }
 
-    /// 画面下の操作の説明の 1 行の上に、吹き出しを描く。画面の文字と同じ座標で呼ぶ。
+    /// 画面の下に、吹き出しを描く。画面の文字と同じ座標で呼ぶ。
     pub fn draw(&self, text: &Text, screen: Vec2, attached: bool) {
         let Some(message) = self.message(attached) else {
             return;
@@ -114,19 +114,11 @@ impl Tutorial {
         let padding = vec2(22.0, 14.0);
         let width = dimensions.width + padding.x * 2.0;
         let height = dimensions.height + padding.y * 2.0;
-        // 下の 1 行（ベースラインが screen.y - 16）に重ならないよう、その上に置く。
         let bottom = screen.y - 56.0;
         let center_x = screen.x / 2.0;
         let rect = Rect::new(center_x - width / 2.0, bottom - height, width, height);
         let fill = Color::new(0.96, 0.96, 0.98, 0.95 * alpha);
         draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
-        // 下の操作の説明を指すしっぽ。
-        draw_triangle(
-            vec2(center_x - 12.0, rect.bottom()),
-            vec2(center_x + 12.0, rect.bottom()),
-            vec2(center_x, rect.bottom() + 14.0),
-            fill,
-        );
         text.draw_y_centered(
             message,
             rect.x + padding.x,

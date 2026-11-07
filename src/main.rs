@@ -232,16 +232,6 @@ async fn main() {
             text::MEDIUM,
             Color::from_rgba(180, 190, 205, 255),
         );
-        // ゲームオーバーの画面は下まで使い、やり直し方もそこに出すので、操作の説明は出さない。
-        if !game.over {
-            text.draw(
-                "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
-                16.0,
-                screen.y - 16.0,
-                text::SMALL,
-                Color::from_rgba(150, 160, 175, 200),
-            );
-        }
         text.draw(
             &best,
             16.0,
@@ -283,6 +273,14 @@ async fn main() {
         }
         if pause.paused() {
             draw_paused(&text, screen);
+            // 操作の説明は遊んでいる間は出さず、一時停止の画面の下にだけ出す。
+            text.draw(
+                "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
+                16.0,
+                screen.y - 16.0,
+                text::SMALL,
+                Color::from_rgba(180, 190, 205, 255),
+            );
             volume_panel.draw(&text, &volume, hovered);
         }
         if game.over {

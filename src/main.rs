@@ -76,7 +76,6 @@ async fn main() {
     let mut new_best = false;
     // クリックは描画フレームで受け、次に回る固定刻みの更新で 1 回だけ使う。
     let mut wire_pressed = false;
-    let mut boost_pressed = false;
     let mut shake = Shake::default();
     // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
     let mut hit_stop = HitStop::default();
@@ -98,7 +97,6 @@ async fn main() {
         let left_click = is_mouse_button_pressed(MouseButton::Left);
         let right_click = is_mouse_button_pressed(MouseButton::Right);
         wire_pressed |= left_click;
-        boost_pressed |= right_click;
         // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。
         let screen = playfield.rect.size();
         // 一時停止の画面の音量の操作。画面の文字と同じ座標で、ポインターがどれに乗っているかを見る。
@@ -145,12 +143,10 @@ async fn main() {
                 );
                 // 止まっている間に押した入力は、再開した後に使わない。
                 wire_pressed = false;
-                boost_pressed = false;
             }
             pause::Frame::Resumed => {
                 // 再開に使ったクリックでワイヤーを撃たない。止まっていた時間も追いかけない。
                 wire_pressed = false;
-                boost_pressed = false;
                 accumulator = 0.0;
             }
         }
@@ -179,7 +175,6 @@ async fn main() {
                 board.reset();
             }
             wire_pressed = false;
-            boost_pressed = false;
         } else if !pause.paused() {
             // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
             accumulator += hit_stop.consume(frame_time);
@@ -187,7 +182,6 @@ async fn main() {
                 let input = WireInput {
                     aim,
                     pressed: wire_pressed,
-                    boost: boost_pressed,
                 };
                 game.step(input, FIXED_DT);
                 for event in &game.events {
@@ -196,7 +190,6 @@ async fn main() {
                     hit_stop.kick(event);
                 }
                 wire_pressed = false;
-                boost_pressed = false;
                 accumulator -= FIXED_DT;
             }
             if game.over {
@@ -285,17 +278,6 @@ async fn main() {
                 Color::from_rgba(150, 160, 175, 200),
             );
         }
-        // ブーストの待ち時間。使えるときは明るく、待っている間は残り時間を出す。
-        let cooldown = game.player.boost_cooldown;
-        let (label, color) = if cooldown > 0.0 {
-            (
-                format!("Boost {cooldown:.1}"),
-                Color::from_rgba(140, 150, 165, 255),
-            )
-        } else {
-            ("Boost OK".to_owned(), Color::from_rgba(140, 220, 160, 255))
-        };
-        text.draw(&label, 16.0, 116.0, text::SMALL, color);
         if game.chain > 0 {
             let multiplier = game.next_multiplier();
             let max = if multiplier == game::MAX_MULTIPLIER {
@@ -332,9 +314,8 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
 }
 
 /// 一時停止の画面の真ん中に出す、遊び方の説明。キーと、その働き。遊んでいる間は出さず、ここにだけ出す。
-const CONTROLS: [(&str, &str); 5] = [
+const CONTROLS: [(&str, &str); 4] = [
     ("Left click", "Shoot / retract the wire"),
-    ("Right click", "Boost the way you move"),
     ("Wire an enemy", "Destroy it and bounce up"),
     ("Red wall", "Keeps speeding up. Run!"),
     ("Esc", "Pause / resume"),

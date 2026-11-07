@@ -121,11 +121,6 @@ def main():
                 synth(0.18, "square", base, base * 1.1, duty=0.5, arp=(0.35, 1.5), volume=0.22),
             ),
         )
-    # ブースト: 低いほうから開いていくノイズの「ゴッ」。
-    write(
-        "boost",
-        synth(0.22, "noise", 6000, 6000, attack=0.02, lowpass=(0.05, 0.5), volume=0.7, seed=4),
-    )
     # ゲームオーバー: 揺れながら下がっていく長めの音。
     write(
         "game_over",

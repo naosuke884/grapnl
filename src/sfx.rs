@@ -11,7 +11,6 @@ pub struct Sfx {
     retract: Sound,
     /// 連鎖の倍率ごとの撃破音。macroquad は鳴らすときに高さを変えられないので、高さ違いを倍率の数だけ持つ。
     kills: Vec<Sound>,
-    boost: Sound,
     game_over: Sound,
 }
 
@@ -35,7 +34,6 @@ impl Sfx {
             attach: load(include_bytes!("../assets/sfx/attach.wav")).await,
             retract: load(include_bytes!("../assets/sfx/retract.wav")).await,
             kills,
-            boost: load(include_bytes!("../assets/sfx/boost.wav")).await,
             game_over: load(include_bytes!("../assets/sfx/game_over.wav")).await,
         }
     }
@@ -54,7 +52,6 @@ impl Sfx {
                 let index = (multiplier.max(1) as usize - 1).min(self.kills.len() - 1);
                 &self.kills[index]
             }
-            Event::Boosted => &self.boost,
             Event::GameOver => &self.game_over,
         };
         play_sound(

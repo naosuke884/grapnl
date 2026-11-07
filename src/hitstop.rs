@@ -52,7 +52,6 @@ mod tests {
     #[test]
     fn passes_time_through_until_kicked() {
         let mut stop = HitStop::default();
-        stop.kick(&Event::Boosted);
         stop.kick(&Event::WireShot);
         stop.kick(&Event::GameOver);
         assert!(!stop.active());

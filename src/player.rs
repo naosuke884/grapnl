@@ -6,18 +6,12 @@ use crate::level::Level;
 
 pub const PLAYER_RADIUS: f32 = 14.0;
 const GRAVITY: f32 = 1600.0;
-/// 速さの上限。振り子の勢いは削らず、ブーストを重ねて操作が追いつかなくなるのだけ防ぐ。
+/// 速さの上限。振り子の勢いは削らず、敵を続けて倒して加速しすぎ、操作が追いつかなくなるのだけ防ぐ。
 pub const MAX_SPEED: f32 = 1600.0;
 /// ワイヤーが届く最大の長さ。地形の刺し先どうしの間隔（350 以下）より十分長くする。
 pub const MAX_WIRE_LENGTH: f32 = 900.0;
 /// これより短いワイヤーにはしない。支点の真下で振り子が暴れないようにする。
 const MIN_WIRE_LENGTH: f32 = 40.0;
-/// 右クリックのブーストで、進んでいる向きへ足す速さ。
-const BOOST_IMPULSE: f32 = 500.0;
-/// ブーストしてから次に使えるまでの時間。
-pub const BOOST_COOLDOWN: f32 = 1.2;
-/// これより遅いときは進む向きが定まらないので、ブーストは右（先へ進む向き）へ出す。
-const MIN_BOOST_DIRECTION_SPEED: f32 = 30.0;
 /// ワイヤーで敵を倒したとき、その場所へ引き寄せられる速さ。
 const PULL_SPEED: f32 = 900.0;
 /// ワイヤーで敵を倒したとき、引き寄せに加えて上へ跳ねる速さ。敵を踏み台にして高く上がれる。
@@ -42,8 +36,6 @@ pub struct WireInput {
     pub aim: Vec2,
     /// 左クリックを押した瞬間。次に回る更新で 1 回だけ真になる。
     pub pressed: bool,
-    /// 右クリックを押した瞬間。進んでいる向きへブーストする。
-    pub boost: bool,
 }
 
 /// 刺さっているワイヤー。
@@ -71,8 +63,6 @@ pub struct Player {
     retract: Option<(Vec2, f32)>,
     /// 戻る途中に押したクリック。戻り切ったフレームに、そのときのカーソルの向きへ 1 発撃つ。
     queued_shot: bool,
-    /// 次にブーストできるまでの時間。0 なら使える。
-    pub boost_cooldown: f32,
     /// 描画用のワイヤーの節。支点から自機まで並ぶ。見た目だけで、動きには影響しない。
     rope: Vec<Vec2>,
     rope_prev: Vec<Vec2>,
@@ -86,7 +76,6 @@ impl Player {
             anchor: None,
             retract: None,
             queued_shot: false,
-            boost_cooldown: 0.0,
             rope: Vec::new(),
             rope_prev: Vec::new(),
         }
@@ -147,12 +136,6 @@ impl Player {
             self.shoot_wire(input.aim, level);
         }
 
-        self.boost_cooldown = (self.boost_cooldown - dt).max(0.0);
-        if input.boost && self.boost_cooldown <= 0.0 {
-            self.velocity += self.boost_direction() * BOOST_IMPULSE;
-            self.boost_cooldown = BOOST_COOLDOWN;
-        }
-
         self.velocity.y += GRAVITY * dt;
         self.pull_by_wire(dt);
         self.velocity = self.velocity.clamp_length_max(MAX_SPEED);
@@ -186,16 +169,6 @@ impl Player {
         let moving_away = self.velocity.dot(outward);
         let pull = (WIRE_STIFFNESS * stretch + WIRE_DAMPING * moving_away).max(0.0);
         self.velocity -= outward * pull * dt;
-    }
-
-    /// ブーストする向き。進んでいる向き、ほとんど止まっているときは右（先へ進む向き）。
-    fn boost_direction(&self) -> Vec2 {
-        let speed = self.velocity.length();
-        if speed < MIN_BOOST_DIRECTION_SPEED {
-            vec2(1.0, 0.0)
-        } else {
-            self.velocity / speed
-        }
     }
 
     /// 伸び過ぎたワイヤーを上限で止める。
@@ -364,11 +337,7 @@ mod tests {
     }
 
     fn press(aim: Vec2) -> WireInput {
-        WireInput {
-            aim,
-            pressed: true,
-            ..Default::default()
-        }
+        WireInput { aim, pressed: true }
     }
 
     fn idle() -> WireInput {
@@ -585,35 +554,5 @@ mod tests {
         }
         let point = hit.expect("戻り切ったときに真上へ撃つ");
         assert_eq!(point.y, 0.0);
-    }
-
-    #[test]
-    fn right_click_boosts_forward_with_cooldown() {
-        let level = Level::default();
-        let boost = WireInput {
-            boost: true,
-            ..idle()
-        };
-        // 右へ進んでいるときは右へ速くなる。
-        let mut player = Player::new(Vec2::ZERO);
-        player.velocity = vec2(200.0, 0.0);
-        player.update(boost, &level, DT);
-        assert!((player.velocity.x - (200.0 + BOOST_IMPULSE)).abs() < 1e-3);
-        // 待ち時間の間は使えない。
-        let vx = player.velocity.x;
-        player.update(boost, &level, DT);
-        assert_eq!(player.velocity.x, vx);
-        // 待ち時間が明けたら、また使える。
-        for _ in 0..(BOOST_COOLDOWN / DT) as usize {
-            player.update(idle(), &level, DT);
-        }
-        player.velocity = vec2(vx, 0.0);
-        player.update(boost, &level, DT);
-        assert!(player.velocity.x > vx + BOOST_IMPULSE * 0.9);
-
-        // 止まっているときは右へ出す。
-        let mut player = Player::new(Vec2::ZERO);
-        player.update(boost, &level, DT);
-        assert_eq!(player.velocity.x, BOOST_IMPULSE);
     }
 }

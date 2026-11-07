@@ -95,7 +95,6 @@ mod tests {
     fn still_until_kicked() {
         let mut shake = Shake::default();
         assert_eq!(shake.offset(), Vec2::ZERO);
-        shake.kick(&Event::Boosted);
         shake.kick(&Event::WireShot);
         shake.update(DT);
         assert_eq!(shake.amplitude(), 0.0);

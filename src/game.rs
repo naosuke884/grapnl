@@ -66,7 +66,6 @@ pub enum Event {
         at: Vec2,
         multiplier: u32,
     },
-    Boosted,
     GameOver,
 }
 
@@ -235,10 +234,9 @@ impl Game {
                 self.chain = 0;
             }
         }
-        // ワイヤーとブーストの出来事は、自機の更新の前後の状態を比べて拾う。
+        // ワイヤーの出来事は、自機の更新の前後の状態を比べて拾う。
         // 刺さっていなかった状態から刺さったときだけ火花を出す。最初から刺さっている状態では出さない。
         let was_anchored = self.player.anchor.is_some();
-        let cooldown = self.player.boost_cooldown;
         if input.pressed && self.player.can_shoot() {
             self.emit(Event::WireShot);
         }
@@ -249,9 +247,6 @@ impl Game {
                 at: anchor.point,
                 normal,
             });
-        }
-        if self.player.boost_cooldown > cooldown {
-            self.emit(Event::Boosted);
         }
         self.best_x = self.best_x.max(self.player.position.x);
         let player = self.player.position;
@@ -496,7 +491,6 @@ mod tests {
             WireInput {
                 aim: enemy,
                 pressed: true,
-                ..Default::default()
             },
             DT,
         );
@@ -545,7 +539,6 @@ mod tests {
         let input = WireInput {
             aim: game.player.position + dir,
             pressed: true,
-            ..Default::default()
         };
         game.step(input, DT);
     }
@@ -639,16 +632,9 @@ mod tests {
     }
 
     #[test]
-    fn boost_and_game_over_are_events() {
+    fn game_over_is_an_event() {
         let mut game = Game::with_seed(1);
-        let input = WireInput {
-            boost: true,
-            ..Default::default()
-        };
-        game.step(input, DT);
-        assert_eq!(game.events, vec![Event::Boosted]);
-        // 待ち時間の間は押してもブーストしない。
-        game.step(input, DT);
+        game.step(WireInput::default(), DT);
         assert!(game.events.is_empty());
         game.hazard_x = game.player.position.x;
         game.step(WireInput::default(), DT);
@@ -766,7 +752,6 @@ mod tests {
 
     /// 単純な操作でも、落ちるまでに 300 m 以上進めることを確かめる。
     /// 刺さっていなければ少し先の刺し先へ撃ち、支点より十分右で上がっている途中にワイヤーを戻す。
-    /// 右上へ上がっている途中は、待ち時間が明けるたびにブーストする。
     /// 移動だけを確かめるので、敵は毎回消す。
     /// ボットは粗く、いずれ低い所へ沈んで落ちるので、落ちずに続けることまでは求めない。
     #[test]
@@ -799,7 +784,6 @@ mod tests {
             let input = WireInput {
                 aim: best_aim(&game).unwrap_or(game.player.position),
                 pressed,
-                boost: game.player.velocity.y < 0.0 && game.player.velocity.x > 0.0,
             };
             game.enemies.list.clear();
             game.step(input, DT);

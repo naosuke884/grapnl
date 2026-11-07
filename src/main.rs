@@ -284,56 +284,81 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
     since_over >= RETRY_DELAY && (click || key_r || key_space)
 }
 
-/// 一時停止の画面の操作の説明。キーと、その働き。遊んでいる間は出さず、ここにだけ出す。
+/// 一時停止の画面の真ん中に出す、遊び方の説明。キーと、その働き。遊んでいる間は出さず、ここにだけ出す。
 const CONTROLS: [(&str, &str); 5] = [
     ("Left click", "Shoot / retract the wire"),
-    ("Right click", "Boost"),
+    ("Right click", "Boost the way you move"),
+    ("Wire an enemy", "Destroy it and bounce up"),
+    ("Red wall", "Keeps speeding up. Run!"),
     ("Esc", "Pause / resume"),
-    ("← →", "Volume"),
-    ("M", "Mute"),
 ];
-const CONTROL_ROW: f32 = 28.0;
+/// 遊び方の説明の 1 行の高さ。文字は `text::MEDIUM`。
+const CONTROL_ROW: f32 = 44.0;
+/// 遊び方の説明の囲みの、上下の余白。
+const CONTROLS_PAD: Vec2 = vec2(0.0, 20.0);
+/// 遊び方の説明の見出しの高さ。
+const CONTROLS_HEADING: f32 = 32.0;
+/// 遊び方の説明の囲みの幅。
+const CONTROLS_WIDTH: f32 = 720.0;
+/// キーの列と働きの列の間。
+const CONTROLS_GUTTER: f32 = 28.0;
 /// 一時停止の画面の、上から並べる間隔。
 const PAUSE_TITLE: f32 = text::LARGE;
-const PAUSE_RESUME: f32 = 40.0;
-/// 「Click or Esc to resume」のベースラインから、音量の囲みの上端まで。
-const PAUSE_PANEL_GAP: f32 = 36.0;
-/// 音量の囲みの下端から、操作の説明の 1 行目のベースラインまで。
-const PAUSE_CONTROLS_GAP: f32 = 48.0;
+/// 「PAUSED」のベースラインから、遊び方の説明の囲みの上端まで。
+const PAUSE_CONTROLS_GAP: f32 = 28.0;
+/// 遊び方の説明の囲みの下端から、音量の囲みの上端まで。
+const PAUSE_PANEL_GAP: f32 = 24.0;
+/// 音量の囲みの下端から、音量のキーの案内のベースラインまで。
+const PAUSE_VOLUME_KEYS: f32 = 28.0;
+/// 音量のキーの案内から、再開の案内のベースラインまで。
+const PAUSE_RESUME: f32 = 44.0;
 /// 背景を暗くする濃さ。後ろの画面の文字が読めて気が散らないくらいにする。
 const DIM: Color = Color::new(0.0, 0.0, 0.0, 0.72);
 
 /// 一時停止の画面の置き方。描くときと、音量の操作のクリックを見るときで同じものを使う。
 struct PauseLayout {
     title: f32,
-    resume: f32,
+    /// 遊び方の説明の囲み。
+    controls: Rect,
     panel: volume::Panel,
-    controls: f32,
+    volume_keys: f32,
+    resume: f32,
+}
+
+fn controls_height() -> f32 {
+    CONTROLS_PAD.y * 2.0 + CONTROLS_HEADING + CONTROL_ROW * CONTROLS.len() as f32
 }
 
 fn pause_layout(screen: Vec2) -> PauseLayout {
     let center_x = screen.x / 2.0;
-    // 音量の囲みの高さを知るため、いったん原点に置いて測る。
-    let panel_height = volume::Panel::new(0.0, 0.0).frame().h;
+    // 音量の囲みの大きさを知るため、いったん原点に置いて測る。
+    let probe = volume::Panel::new(0.0, 0.0).frame();
     let height = PAUSE_TITLE
-        + PAUSE_RESUME
-        + PAUSE_PANEL_GAP
-        + panel_height
         + PAUSE_CONTROLS_GAP
-        + CONTROL_ROW * (CONTROLS.len() - 1) as f32;
+        + controls_height()
+        + PAUSE_PANEL_GAP
+        + probe.h
+        + PAUSE_VOLUME_KEYS
+        + PAUSE_RESUME;
     let top = ((screen.y - height) / 2.0).max(16.0);
     let title = top + PAUSE_TITLE;
-    let resume = title + PAUSE_RESUME;
-    let panel = volume::Panel::new(0.0, 0.0);
-    // `Panel::new` の上端は枠の内側の行なので、枠の上端が `resume + PAUSE_PANEL_GAP` に来るようずらす。
-    let inset = -panel.frame().y;
-    let panel = volume::Panel::new(center_x, resume + PAUSE_PANEL_GAP + inset);
-    let controls = panel.frame().bottom() + PAUSE_CONTROLS_GAP;
+    // 遊び方の説明の囲みは、表（一番長い行で約 620）が余白込みで収まる幅にし、真ん中の主役にする。
+    let width = CONTROLS_WIDTH.min(screen.x - 32.0);
+    let controls = Rect::new(
+        center_x - width / 2.0,
+        title + PAUSE_CONTROLS_GAP,
+        width,
+        controls_height(),
+    );
+    // `Panel::new` の上端は枠の内側の行なので、枠の上端が囲みの下に来るようずらす。
+    let panel = volume::Panel::new(center_x, controls.bottom() + PAUSE_PANEL_GAP - probe.y);
+    let volume_keys = panel.frame().bottom() + PAUSE_VOLUME_KEYS;
     PauseLayout {
         title,
-        resume,
-        panel,
         controls,
+        panel,
+        volume_keys,
+        resume: volume_keys + PAUSE_RESUME,
     }
 }
 
@@ -342,22 +367,62 @@ fn draw_paused(text: &Text, screen: Vec2) {
     let layout = pause_layout(screen);
     let center_x = screen.x / 2.0;
     text.draw_centered("PAUSED", center_x, layout.title, text::LARGE, WHITE);
+
+    let area = layout.controls;
+    draw_rectangle(
+        area.x,
+        area.y,
+        area.w,
+        area.h,
+        Color::from_rgba(20, 24, 32, 230),
+    );
+    text.draw_centered(
+        "HOW TO PLAY",
+        center_x,
+        area.y + CONTROLS_PAD.y + CONTROLS_HEADING - 10.0,
+        text::SMALL,
+        Color::from_rgba(150, 200, 235, 255),
+    );
+    // キーは右揃え、働きは左揃えにして、表の中で向かい合わせる。列の境目は一番長いキーで決める。
+    let key_width = CONTROLS
+        .iter()
+        .map(|(key, _)| text.measure(key, text::MEDIUM).width)
+        .fold(0.0, f32::max);
+    let action_width = CONTROLS
+        .iter()
+        .map(|(_, action)| text.measure(action, text::MEDIUM).width)
+        .fold(0.0, f32::max);
+    let table_left = center_x - (key_width + CONTROLS_GUTTER + action_width) / 2.0;
+    let divider = table_left + key_width;
+    let key_color = Color::from_rgba(255, 210, 110, 255);
+    let action_color = Color::from_rgba(225, 230, 240, 255);
+    for (i, (key, action)) in CONTROLS.iter().enumerate() {
+        let y = area.y + CONTROLS_PAD.y + CONTROLS_HEADING + CONTROL_ROW * (i as f32 + 1.0) - 12.0;
+        let width = text.measure(key, text::MEDIUM).width;
+        text.draw(key, divider - width, y, text::MEDIUM, key_color);
+        text.draw(
+            action,
+            divider + CONTROLS_GUTTER,
+            y,
+            text::MEDIUM,
+            action_color,
+        );
+    }
+
+    text.draw_centered(
+        "← →  Volume     M  Mute",
+        center_x,
+        layout.volume_keys,
+        text::SMALL,
+        Color::from_rgba(150, 160, 175, 255),
+    );
     text.draw_centered(
         "Click or Esc to resume",
         center_x,
         layout.resume,
-        text::SMALL,
-        Color::from_rgba(180, 190, 205, 255),
+        text::MEDIUM,
+        WHITE,
     );
-    // キーは右揃え、働きは左揃えにして、真ん中で向かい合わせる。
-    let key_color = Color::from_rgba(230, 235, 245, 255);
-    let action_color = Color::from_rgba(150, 160, 175, 255);
-    for (i, (key, action)) in CONTROLS.iter().enumerate() {
-        let y = layout.controls + CONTROL_ROW * i as f32;
-        let width = text.measure(key, text::SMALL).width;
-        text.draw(key, center_x - 16.0 - width, y, text::SMALL, key_color);
-        text.draw(action, center_x + 16.0, y, text::SMALL, action_color);
-    }
 }
 
 /// 一時停止の画面で、音量の操作を「Esc かクリックで再開」の下に置く。

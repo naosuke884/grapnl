@@ -6,7 +6,7 @@ use macroquad::prelude::*;
 
 use crate::game::Event;
 use crate::page;
-use crate::text::Text;
+use crate::text::{self, Text};
 
 /// 説明を出すプレイの回数。ゲームオーバーになるたびに 1 回と数える。
 pub const RUNS: u32 = 3;
@@ -109,7 +109,7 @@ impl Tutorial {
             return;
         };
         let alpha = (self.shown / FADE_IN).clamp(0.0, 1.0);
-        let size = 28.0;
+        let size = text::MEDIUM;
         let dimensions = text.measure(message, size);
         let padding = vec2(22.0, 14.0);
         let width = dimensions.width + padding.x * 2.0;

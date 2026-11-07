@@ -7,7 +7,7 @@
 use macroquad::prelude::*;
 
 use crate::game::{Event, MAX_MULTIPLIER};
-use crate::text::Text;
+use crate::text::{self, Text};
 
 /// 同時に出せる得点の数。これを超えたら、残り時間が一番短いものを上書きする。
 const MAX_POPUPS: usize = 8;
@@ -26,10 +26,8 @@ const POP_SCALE: f32 = 1.35;
 /// 倍率 1 の文字の高さ（画面のピクセル）。倍率が 1 上がるごとに `SIZE_STEP` ずつ大きくする。
 const BASE_SIZE: f32 = 30.0;
 const SIZE_STEP: f32 = 7.0;
-/// 文字の画像を作る大きさ。`Text` が始める前に作っておく大きさ（`SIZES`）から選ぶ。
-/// 描く大きさより大きいほうを縮めて使い、ぼやけないようにする。
-const RASTER_SMALL: u16 = 28;
-const RASTER_LARGE: u16 = 56;
+/// 文字の画像を作る大きさ。ドットフォントの元の大きさで作り、ドットのまま拡大して描く。
+const RASTER: u16 = text::SMALL as u16;
 
 /// 倍率ごとの文字。`KILL_POINTS × 倍率`。毎フレーム `format!` しないよう、決まった文字列を使う。
 const LABELS: [&str; MAX_MULTIPLIER as usize] = ["+100", "+200", "+300", "+400", "+500"];
@@ -145,13 +143,8 @@ impl Popups {
     pub fn draw(&self, text: &Text, world_per_pixel: f32) {
         for popup in self.alive() {
             let size = popup.size();
-            let raster = if size > RASTER_SMALL as f32 {
-                RASTER_LARGE
-            } else {
-                RASTER_SMALL
-            };
-            let scale = size / raster as f32 * world_per_pixel;
-            text.draw_scaled_centered(popup.label(), popup.position, raster, scale, popup.color());
+            let scale = size / RASTER as f32 * world_per_pixel;
+            text.draw_scaled_centered(popup.label(), popup.position, RASTER, scale, popup.color());
         }
     }
 
@@ -197,8 +190,6 @@ mod tests {
             );
             assert!(b.g + b.b < a.g + a.b);
         }
-        // 一番大きい文字でも、作っておいた画像より大きく引き伸ばさない。
-        assert!(size_of(MAX_MULTIPLIER) * POP_SCALE <= RASTER_LARGE as f32 * 1.4);
     }
 
     #[test]

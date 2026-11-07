@@ -4,7 +4,7 @@
 use macroquad::prelude::*;
 
 use crate::page;
-use crate::text::Text;
+use crate::text::{self, Text};
 
 /// 音量の段階の数。いちばん上が、音を作ったときの大きさ。
 pub const LEVELS: u32 = 5;
@@ -186,7 +186,13 @@ impl Panel {
             Color::from_rgba(20, 24, 32, 230),
         );
         let label_color = Color::from_rgba(180, 190, 205, 255);
-        text.draw_y_centered("音量", self.row.x, self.row.center().y, 24.0, label_color);
+        text.draw_y_centered(
+            "音量",
+            self.row.x,
+            self.row.center().y,
+            text::SMALL,
+            label_color,
+        );
 
         let lit = Color::from_rgba(140, 220, 160, 255);
         // 消している間は、段階を覚えていることが分かるよう暗く残す。
@@ -223,7 +229,7 @@ impl Panel {
             label,
             button.center().x,
             button.center().y + 8.0,
-            22.0,
+            text::SMALL,
             WHITE,
         );
 
@@ -231,7 +237,7 @@ impl Panel {
             "← → で音量   M で消す・出す",
             frame.center().x,
             frame.bottom() + 28.0,
-            22.0,
+            text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
     }

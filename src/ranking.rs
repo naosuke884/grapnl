@@ -2,18 +2,18 @@
 //! ゲームオーバーになったらスコアを送ってから読み始め（`roommate_sdk::request_ranking`）、
 //! 読み終えたら上位と自分の順位を出す。送ったばかりのスコアも順位に入る。
 //! 名前は誰でも付けられ、画面の文字だけに絞ったフォントでは描けないことが多い。
-//! そのときだけ、名前用に全文字のフォント（約 1.6 MB）を後から読み込み、それまでは描けない文字を「?」にする。
+//! そのときだけ、名前用に全文字のフォント（約 1.8 MB）を後から読み込み、それまでは描けない文字を「?」にする。
 
 use macroquad::experimental::coroutines::{start_coroutine, Coroutine};
 use macroquad::prelude::*;
 use roommate_sdk::{Ranking, RankingStatus};
 
-use crate::text::Text;
+use crate::text::{self, Text};
 
 /// 上位から出す行数の上限。画面が低いときはこれより減らす。
 pub const MAX_ROWS: usize = 5;
-/// 1 行の高さ。文字は 22 の大きさで描く。
-pub const ROW_HEIGHT: f32 = 28.0;
+/// 1 行の高さ。文字は `text::SMALL` の大きさで描く。
+pub const ROW_HEIGHT: f32 = 24.0;
 /// 表の横幅。順位・名前・スコアを並べる。
 const WIDTH: f32 = 360.0;
 /// 順位の列の右端（表の左端から）。
@@ -26,9 +26,9 @@ const NAME_LEFT: f32 = 72.0;
 const NAME_CHARS: &str = "名無し#0123456789abcdef";
 /// 名前用のフォント。scripts/subset-font.py が web/ に置く。ブラウザではページと同じ場所から読む。
 #[cfg(target_arch = "wasm32")]
-const NAMES_FONT: &str = "MPLUS1p-Bold-names.ttf";
+const NAMES_FONT: &str = "DotGothic16-Regular-names.ttf";
 #[cfg(not(target_arch = "wasm32"))]
-const NAMES_FONT: &str = "web/MPLUS1p-Bold-names.ttf";
+const NAMES_FONT: &str = "web/DotGothic16-Regular-names.ttf";
 
 const HEADER_COLOR: Color = Color::new(0.59, 0.78, 0.92, 1.0);
 const ROW_COLOR: Color = Color::new(0.85, 0.88, 0.92, 1.0);
@@ -129,11 +129,11 @@ impl Board {
     /// 名前を描く。名前用のフォントがあればそれで、無ければ描けない文字を「?」にして描く。
     fn draw_name(&self, text: &Text, name: &str, x: f32, baseline: f32, color: Color) {
         if text.drawable(name) == name {
-            text.draw(name, x, baseline, 22.0, color);
+            text.draw(name, x, baseline, text::SMALL, color);
         } else if let NamesFont::Ready(names) = &self.names {
-            names.draw(&names.drawable(name), x, baseline, 22.0, color);
+            names.draw(&names.drawable(name), x, baseline, text::SMALL, color);
         } else {
-            text.draw(&text.drawable(name), x, baseline, 22.0, color);
+            text.draw(&text.drawable(name), x, baseline, text::SMALL, color);
         }
     }
 
@@ -146,11 +146,19 @@ impl Board {
     pub fn draw(&self, text: &Text, center_x: f32, top: f32, rows: usize) {
         let left = center_x - WIDTH / 2.0;
         let mut baseline = top + ROW_HEIGHT - 6.0;
-        text.draw_centered("今日のランキング", center_x, baseline, 22.0, HEADER_COLOR);
+        text.draw_centered(
+            "今日のランキング",
+            center_x,
+            baseline,
+            text::SMALL,
+            HEADER_COLOR,
+        );
         for line in lines(&self.status, rows) {
             baseline += ROW_HEIGHT;
             match line {
-                Line::Note(note) => text.draw_centered(note, center_x, baseline, 22.0, NOTE_COLOR),
+                Line::Note(note) => {
+                    text.draw_centered(note, center_x, baseline, text::SMALL, NOTE_COLOR)
+                }
                 Line::Row {
                     rank,
                     name,
@@ -172,7 +180,7 @@ impl Board {
                     &format!("あなたは {rank}位"),
                     center_x,
                     baseline,
-                    22.0,
+                    text::SMALL,
                     MINE_COLOR,
                 ),
             }
@@ -181,8 +189,8 @@ impl Board {
 }
 
 fn draw_right(text: &Text, s: &str, right: f32, baseline: f32, color: Color) {
-    let width = text.measure(s, 22.0).width;
-    text.draw(s, right - width, baseline, 22.0, color);
+    let width = text.measure(s, text::SMALL).width;
+    text.draw(s, right - width, baseline, text::SMALL, color);
 }
 
 /// 表の中身。見出しの下に並べる順。

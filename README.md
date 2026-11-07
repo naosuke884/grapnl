@@ -55,7 +55,7 @@ cargo run
 
 画面の文字は日本語で、`src/text.rs` の `Text` で描きます。macroquad の既定のフォントは日本語を描けないので、`draw_text` は使いません。
 
-フォントは [M PLUS 1p](https://fonts.google.com/specimen/M+PLUS+1p) Bold（SIL OFL 1.1、`assets/fonts/OFL.txt`）を、`src/` の文字列リテラルで使う文字だけに絞って `assets/fonts/MPLUS1p-Bold-subset.ttf` に置き、wasm に埋め込んでいます。文字列に新しい文字を足したら、絞り直します。
+フォントはドットフォントの [DotGothic16](https://fonts.google.com/specimen/DotGothic16)（SIL OFL 1.1、`assets/fonts/OFL.txt`）を、`src/` の文字列リテラルで使う文字だけに絞って `assets/fonts/DotGothic16-Regular-subset.ttf` に置き、wasm に埋め込んでいます。16 ピクセルで作られたフォントなので、ドットが滲まないよう文字の大きさは 16・32・48（`text::SMALL`・`MEDIUM`・`LARGE`）だけを使います。文字列に新しい文字を足したら、絞り直します。
 
 ```sh
 pip install fonttools
@@ -80,7 +80,7 @@ python3 -m http.server 8080 --directory web
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
 - `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない
 - `grapnl.wasm` — `./scripts/build-wasm.sh` が生成する（gitignore 済み）
-- `MPLUS1p-Bold-names.ttf` — ランキングの名前を描く全文字のフォント（約 1.6 MB）。画面の文字だけに絞った同梱のフォントで描けない名前があったときだけ、ゲームが後から読み込む。`scripts/subset-font.py` が作る
+- `DotGothic16-Regular-names.ttf` — ランキングの名前を描く全文字のフォント（約 1.8 MB）。画面の文字だけに絞った同梱のフォントで描けない名前があったときだけ、ゲームが後から読み込む。`scripts/subset-font.py` が作る
 - `bgm.ogg` — BGM。`scripts/gen-bgm.py` で合成する。最初の読み込みを重くしないよう、ゲームが始まってから読み込む
 
 main に push すると、CI が WASM をビルドし、R2 のバケット `roommate-games` の `grapnl/` に上書きで置きます。<https://play.roommate.hayashi-naoki.com/grapnl/> で遊べます。置く前に `scripts/stage-web.sh` が JS と wasm の参照に `?v=<commit>` を付け、更新後に古いファイルと新しいファイルが組み合わさらないようにします。戻すときは前のコミットに戻して push し直します。アップロードには GitHub の Environment `production` の Secret `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` を使います。

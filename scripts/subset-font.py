@@ -15,17 +15,17 @@ import sys
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-# 元のフォントは大きい（約 1.7 MB）ので、リポジトリには入れず target/ に落としておく。
+# 元のフォントは大きい（約 2 MB）ので、リポジトリには入れず target/ に落としておく。
 SOURCE_URL = (
     "https://raw.githubusercontent.com/google/fonts/"
-    "a24c920263576ec723d64c1b26f8afabb841601d/ofl/mplus1p/MPLUS1p-Bold.ttf"
+    "d5ef175583bb5f7a3b01bc6c4603dd4a1f445f34/ofl/dotgothic16/DotGothic16-Regular.ttf"
 )
-SOURCE_SHA256 = "76eb077b0a31ca33ca40238e47da5a17e2786741607cec09678d7d2e5ab1afc1"
-SOURCE = ROOT / "target" / "fonts" / "MPLUS1p-Bold.ttf"
-OUTPUT = ROOT / "assets" / "fonts" / "MPLUS1p-Bold-subset.ttf"
+SOURCE_SHA256 = "3ad9af88726d42b40f7f365f0dcac785af73cf20ea6f1d5b44e57cc21150b8f1"
+SOURCE = ROOT / "target" / "fonts" / "DotGothic16-Regular.ttf"
+OUTPUT = ROOT / "assets" / "fonts" / "DotGothic16-Regular-subset.ttf"
 # ランキングの名前は誰でも付けられるので、全文字を入れたものを別に置く。
 # ゲームは描けない名前があったときだけ後から読み込む（src/ranking.rs）。
-NAMES_OUTPUT = ROOT / "web" / "MPLUS1p-Bold-names.ttf"
+NAMES_OUTPUT = ROOT / "web" / "DotGothic16-Regular-names.ttf"
 
 
 def string_literal_chars(source: str) -> set[str]:

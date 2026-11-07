@@ -1,10 +1,14 @@
 use macroquad::prelude::*;
 
-/// 画面の日本語を描くフォント。M PLUS 1p（SIL OFL 1.1、assets/fonts/OFL.txt）を、
+/// 画面の日本語を描くドットフォント。DotGothic16（SIL OFL 1.1、assets/fonts/OFL.txt）を、
 /// src/ の文字列リテラルで使う文字だけに絞ったもの。文字を足したら scripts/subset-font.py を実行し直す。
-const FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/MPLUS1p-Bold-subset.ttf");
-/// 画面で使う文字の大きさ。遊んでいる途中で文字の画像を作ってカクつかないよう、始める前に作っておく。
-const SIZES: [u16; 4] = [22, 24, 28, 56];
+const FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/DotGothic16-Regular-subset.ttf");
+/// 画面の文字の大きさ。DotGothic16 は 16 ピクセルで作られているので、ドットが滲まないよう 16 の倍数だけを使う。
+pub const SMALL: f32 = 16.0;
+pub const MEDIUM: f32 = 32.0;
+pub const LARGE: f32 = 48.0;
+/// 遊んでいる途中で文字の画像を作ってカクつかないよう、始める前に作っておく大きさ。
+const SIZES: [u16; 3] = [SMALL as u16, MEDIUM as u16, LARGE as u16];
 
 /// 画面の文字を描く。macroquad の既定のフォントは日本語を描けないので、すべての文字はこれで描く。
 pub struct Text {
@@ -15,7 +19,9 @@ pub struct Text {
 
 impl Text {
     pub fn load() -> Self {
-        let font = load_ttf_font_from_bytes(FONT_BYTES).expect("同梱のフォントを読めない");
+        let mut font = load_ttf_font_from_bytes(FONT_BYTES).expect("同梱のフォントを読めない");
+        // 高 DPI の画面で拡大されても、ドットが滲まないようにする。
+        font.set_filter(FilterMode::Nearest);
         let chars = font_chars(FONT_BYTES);
         for size in SIZES {
             font.populate_font_cache(&chars, size);
@@ -25,7 +31,8 @@ impl Text {
 
     /// 後から読み込んだフォント。文字の画像は描くときに作る。読めなければ `None`。
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let font = load_ttf_font_from_bytes(bytes).ok()?;
+        let mut font = load_ttf_font_from_bytes(bytes).ok()?;
+        font.set_filter(FilterMode::Nearest);
         Some(Self {
             font,
             chars: font_chars(bytes),

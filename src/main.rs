@@ -229,7 +229,7 @@ async fn main() {
             ),
             16.0,
             32.0,
-            28.0,
+            text::MEDIUM,
             Color::from_rgba(180, 190, 205, 255),
         );
         // ゲームオーバーの画面は下まで使い、やり直し方もそこに出すので、操作の説明は出さない。
@@ -238,7 +238,7 @@ async fn main() {
                 "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
                 16.0,
                 screen.y - 16.0,
-                22.0,
+                text::SMALL,
                 Color::from_rgba(150, 160, 175, 200),
             );
         }
@@ -246,7 +246,7 @@ async fn main() {
             &best,
             16.0,
             60.0,
-            22.0,
+            text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
         // ブーストの待ち時間。使えるときは明るく、待っている間は残り時間を出す。
@@ -262,7 +262,7 @@ async fn main() {
                 Color::from_rgba(140, 220, 160, 255),
             )
         };
-        text.draw(&label, 16.0, 116.0, 22.0, color);
+        text.draw(&label, 16.0, 116.0, text::SMALL, color);
         if game.chain > 0 {
             let multiplier = game.next_multiplier();
             let max = if multiplier == game::MAX_MULTIPLIER {
@@ -274,7 +274,7 @@ async fn main() {
                 &format!("連鎖 x{multiplier}{max}"),
                 16.0,
                 88.0,
-                28.0,
+                text::MEDIUM,
                 Color::from_rgba(255, 200, 80, 255),
             );
         }
@@ -317,18 +317,18 @@ fn draw_offscreen_hazard(text: &Text, meters: f32, screen: Vec2) {
         vec2(26.0, y + 12.0),
         color,
     );
-    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
+    text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, text::MEDIUM, color);
 }
 
 fn draw_paused(text: &Text, screen: Vec2) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
     let center = screen / 2.0;
-    text.draw_centered("一時停止中", center.x, center.y - 10.0, 56.0, WHITE);
+    text.draw_centered("一時停止中", center.x, center.y - 10.0, text::LARGE, WHITE);
     text.draw_centered(
         "Esc かクリックで再開",
         center.x,
         center.y + 34.0,
-        24.0,
+        text::SMALL,
         Color::from_rgba(180, 190, 205, 255),
     );
 }
@@ -347,9 +347,9 @@ fn best_label(best: Option<u32>) -> String {
 }
 
 /// ゲームオーバーの画面の、上から並べる行の間隔。それぞれ前の行のベースラインからの距離。
-const OVER_TITLE: f32 = 56.0;
-const OVER_REASON: f32 = 44.0;
-const OVER_SCORE: f32 = 38.0;
+const OVER_TITLE: f32 = text::LARGE;
+const OVER_REASON: f32 = 48.0;
+const OVER_SCORE: f32 = 44.0;
 /// スコアの行のベースラインから、ランキングの見出しの上端まで。
 const OVER_RANKING_GAP: f32 = 20.0;
 /// ランキングの表の下端から、やり直しの案内のベースラインまで。
@@ -383,14 +383,14 @@ fn draw_game_over(
     let rows = ranking_rows(screen.y);
     let height = game_over_fixed_height() + Board::height(rows);
     let mut y = ((screen.y - height) / 2.0).max(OVER_MARGIN) + OVER_TITLE;
-    text.draw_centered("ゲームオーバー", center_x, y, 56.0, WHITE);
+    text.draw_centered("ゲームオーバー", center_x, y, text::LARGE, WHITE);
     y += OVER_REASON;
     if let Some(reason) = game.end_reason {
         text.draw_centered(
             reason.label(),
             center_x,
             y,
-            28.0,
+            text::MEDIUM,
             Color::from_rgba(255, 140, 120, 255),
         );
     }
@@ -404,7 +404,7 @@ fn draw_game_over(
         ),
         center_x,
         y,
-        28.0,
+        text::MEDIUM,
         WHITE,
     );
     y += OVER_RANKING_GAP;
@@ -415,7 +415,7 @@ fn draw_game_over(
             "クリックか R かスペースでもう一度",
             center_x,
             y,
-            24.0,
+            text::SMALL,
             Color::from_rgba(180, 190, 205, 255),
         );
     }
@@ -425,7 +425,7 @@ fn draw_game_over(
         &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
         center_x,
         y,
-        22.0,
+        text::SMALL,
         Color::from_rgba(150, 200, 235, 255),
     );
 }

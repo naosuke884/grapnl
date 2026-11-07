@@ -109,8 +109,17 @@ async fn main() {
         } else {
             None
         };
-        // 音量の囲みの中のクリックでは再開しない。
-        let on_volume_panel = pause.paused() && volume_panel.frame().contains(pointer);
+        // 音量の囲みと、メニューのボタンの上のクリックでは再開しない。
+        let menu = pause_layout(screen).menu;
+        let menu_hovered = if pause.paused() {
+            menu.iter()
+                .find(|(_, rect)| rect.contains(pointer))
+                .map(|(item, _)| *item)
+        } else {
+            None
+        };
+        let on_volume_panel =
+            pause.paused() && (volume_panel.frame().contains(pointer) || menu_hovered.is_some());
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
         match pause.update(
             game.over,
@@ -120,6 +129,14 @@ async fn main() {
         ) {
             pause::Frame::Running => {}
             pause::Frame::Paused => {
+                if left_click {
+                    match menu_hovered {
+                        Some(MenuItem::ChangeName) => roommate_sdk::open_name_dialog(),
+                        Some(MenuItem::DeleteData) => page::open_delete_dialog(),
+                        Some(MenuItem::BackToSite) => page::go_to_site(),
+                        None => {}
+                    }
+                }
                 volume.update(
                     is_key_pressed(KeyCode::Left),
                     is_key_pressed(KeyCode::Right),
@@ -256,6 +273,18 @@ async fn main() {
             text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
+        // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開き方だけを右上に小さく出す。
+        if !game.over && !pause.paused() {
+            let hint = "Esc  Menu";
+            let width = text.measure(hint, text::SMALL).width;
+            text.draw(
+                hint,
+                screen.x - 16.0 - width,
+                32.0,
+                text::SMALL,
+                Color::from_rgba(150, 160, 175, 200),
+            );
+        }
         // ブーストの待ち時間。使えるときは明るく、待っている間は残り時間を出す。
         let cooldown = game.player.boost_cooldown;
         let (label, color) = if cooldown > 0.0 {
@@ -283,7 +312,7 @@ async fn main() {
             );
         }
         if pause.paused() {
-            draw_paused(&text, screen);
+            draw_paused(&text, screen, pointer);
             volume_panel.draw(&sprites, &volume, hovered);
         }
         if game.over {
@@ -328,8 +357,32 @@ const PAUSE_CONTROLS_GAP: f32 = 28.0;
 const PAUSE_PANEL_GAP: f32 = 24.0;
 /// 音量の囲みの下端から、音量のキーの案内のベースラインまで。
 const PAUSE_VOLUME_KEYS: f32 = 28.0;
-/// 音量のキーの案内から、再開の案内のベースラインまで。
-const PAUSE_RESUME: f32 = 44.0;
+/// 音量のキーの案内のベースラインから、メニューのボタンの上端まで。
+const PAUSE_MENU_GAP: f32 = 24.0;
+const MENU_BUTTON: Vec2 = vec2(200.0, 44.0);
+const MENU_GAP: f32 = 16.0;
+/// メニューのボタンの下端から、再開の案内のベースラインまで。
+const PAUSE_RESUME: f32 = 48.0;
+
+/// 一時停止の画面の下に並べるボタン。ページの上にあったヘッダーの役目をここへ移した。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuItem {
+    ChangeName,
+    DeleteData,
+    BackToSite,
+}
+
+impl MenuItem {
+    const ALL: [Self; 3] = [Self::ChangeName, Self::DeleteData, Self::BackToSite];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::ChangeName => "Change name",
+            Self::DeleteData => "Delete my data",
+            Self::BackToSite => "← roommate",
+        }
+    }
+}
 /// 背景を暗くする濃さ。後ろの画面の文字が読めて気が散らないくらいにする。
 const DIM: Color = Color::new(0.0, 0.0, 0.0, 0.72);
 
@@ -340,6 +393,7 @@ struct PauseLayout {
     controls: Rect,
     panel: volume::Panel,
     volume_keys: f32,
+    menu: [(MenuItem, Rect); 3],
     resume: f32,
 }
 
@@ -357,6 +411,8 @@ fn pause_layout(screen: Vec2) -> PauseLayout {
         + PAUSE_PANEL_GAP
         + probe.h
         + PAUSE_VOLUME_KEYS
+        + PAUSE_MENU_GAP
+        + MENU_BUTTON.y
         + PAUSE_RESUME;
     let top = ((screen.y - height) / 2.0).max(16.0);
     let title = top + PAUSE_TITLE;
@@ -371,16 +427,28 @@ fn pause_layout(screen: Vec2) -> PauseLayout {
     // `Panel::new` の上端は枠の内側の行なので、枠の上端が囲みの下に来るようずらす。
     let panel = volume::Panel::new(center_x, controls.bottom() + PAUSE_PANEL_GAP - probe.y);
     let volume_keys = panel.frame().bottom() + PAUSE_VOLUME_KEYS;
+    let menu_top = volume_keys + PAUSE_MENU_GAP;
+    let count = MenuItem::ALL.len() as f32;
+    let menu_left = center_x - (MENU_BUTTON.x * count + MENU_GAP * (count - 1.0)) / 2.0;
+    let menu = MenuItem::ALL.map(|item| {
+        let i = MenuItem::ALL
+            .iter()
+            .position(|&other| other == item)
+            .unwrap_or(0) as f32;
+        let x = menu_left + i * (MENU_BUTTON.x + MENU_GAP);
+        (item, Rect::new(x, menu_top, MENU_BUTTON.x, MENU_BUTTON.y))
+    });
     PauseLayout {
         title,
         controls,
         panel,
         volume_keys,
-        resume: volume_keys + PAUSE_RESUME,
+        menu,
+        resume: menu_top + MENU_BUTTON.y + PAUSE_RESUME,
     }
 }
 
-fn draw_paused(text: &Text, screen: Vec2) {
+fn draw_paused(text: &Text, screen: Vec2, pointer: Vec2) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
     let layout = pause_layout(screen);
     let center_x = screen.x / 2.0;
@@ -434,6 +502,39 @@ fn draw_paused(text: &Text, screen: Vec2) {
         text::SMALL,
         Color::from_rgba(150, 160, 175, 255),
     );
+    // データを消した後は、名前も消すものも無いので、そのことだけ知らせてサイトへ戻るボタンを残す。
+    let deleted = page::data_deleted();
+    for (item, rect) in layout.menu {
+        if deleted && item != MenuItem::BackToSite {
+            continue;
+        }
+        let hovered = rect.contains(pointer);
+        let (fill, border) = match (item, hovered) {
+            (MenuItem::DeleteData, true) => (
+                Color::from_rgba(70, 32, 38, 255),
+                Color::from_rgba(200, 90, 100, 255),
+            ),
+            (_, true) => (Color::from_rgba(44, 50, 64, 255), WHITE),
+            (_, false) => (
+                Color::from_rgba(28, 32, 42, 255),
+                Color::from_rgba(70, 78, 96, 255),
+            ),
+        };
+        draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
+        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, border);
+        text.draw_y_centered_middle(item.label(), rect.center(), text::SMALL, WHITE);
+    }
+    if deleted {
+        let first = layout.menu[0].1;
+        let second = layout.menu[1].1;
+        text.draw_centered(
+            "Your data was deleted. Scores won't be saved until you reload.",
+            (first.x + second.right()) / 2.0,
+            first.center().y + 6.0,
+            text::SMALL,
+            Color::from_rgba(255, 204, 90, 255),
+        );
+    }
     text.draw_centered(
         "Click or Esc to resume",
         center_x,
@@ -463,9 +564,11 @@ const OVER_SCORE: f32 = 48.0;
 /// 自己ベストの行。更新したときは「NEW BEST!」を大きく出す。
 const OVER_BEST: f32 = 40.0;
 /// 自己ベストの行のベースラインから、ランキングの見出しの上端まで。
-const OVER_RANKING_GAP: f32 = 28.0;
+const OVER_RANKING_GAP: f32 = 44.0;
+/// ランキングの囲みの、表の外の余白。
+const RANKING_PAD: Vec2 = vec2(40.0, 22.0);
 /// ランキングの表の下端から、「Retry」ボタンの上端まで。
-const OVER_RETRY_GAP: f32 = 32.0;
+const OVER_RETRY_GAP: f32 = 48.0;
 const RETRY_SIZE: Vec2 = vec2(200.0, 52.0);
 /// 画面の上下に残す余白。
 const OVER_MARGIN: f32 = 16.0;
@@ -573,7 +676,7 @@ fn draw_game_over(
     }
     y += OVER_RANKING_GAP;
     // ランキングは囲みの中に出し、上の自分の結果と分けて見せる。
-    let pad = vec2(24.0, 10.0);
+    let pad = RANKING_PAD;
     draw_rectangle(
         center_x - ranking::WIDTH / 2.0 - pad.x,
         y - pad.y,
@@ -620,7 +723,7 @@ mod tests {
 
     #[test]
     fn retry_button_sits_below_the_ranking_on_screen() {
-        for height in [720.0, 400.0] {
+        for height in [720.0, 520.0] {
             let screen = vec2(1280.0, height);
             let layout = game_over_layout(screen, &Board::default());
             assert!(layout.retry.bottom() <= height);

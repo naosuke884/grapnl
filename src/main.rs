@@ -2,6 +2,7 @@ mod daily;
 mod enemy;
 mod game;
 mod generator;
+mod hitstop;
 mod level;
 mod particles;
 mod player;
@@ -14,6 +15,7 @@ mod text;
 use macroquad::prelude::*;
 
 use game::{Game, VIEW_HEIGHT};
+use hitstop::HitStop;
 use player::WireInput;
 use shadow::{Shadows, State};
 use shake::Shake;
@@ -60,6 +62,8 @@ async fn main() {
     let mut wire_pressed = false;
     let mut boost_pressed = false;
     let mut shake = Shake::default();
+    // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
+    let mut hit_stop = HitStop::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -83,12 +87,14 @@ async fn main() {
                 realtime::join(&game::room_key(game.seed()));
                 accumulator = 0.0;
                 since_over = 0.0;
+                hit_stop = HitStop::default();
             }
             wire_pressed = false;
             boost_pressed = false;
         } else {
-            accumulator += frame_time;
-            while accumulator >= FIXED_DT && !game.over {
+            // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
+            accumulator += hit_stop.consume(frame_time);
+            while accumulator >= FIXED_DT && !game.over && !hit_stop.active() {
                 let input = WireInput {
                     aim,
                     pressed: wire_pressed,
@@ -98,6 +104,7 @@ async fn main() {
                 for event in &game.events {
                     sfx.play(event);
                     shake.kick(event);
+                    hit_stop.kick(event);
                 }
                 wire_pressed = false;
                 boost_pressed = false;

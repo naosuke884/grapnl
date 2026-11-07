@@ -1,0 +1,5 @@
+# git のフック。各クローンで一度 `lefthook install` すると入る（README の「コミットメッセージ」）。
+commit-msg:
+  commands:
+    message:
+      run: scripts/check-commit-msg.sh {1}

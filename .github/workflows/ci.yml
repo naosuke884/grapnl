@@ -6,6 +6,37 @@ on:
   pull_request:
 
 jobs:
+  # 各コミットのメッセージが書き方に合うかを確かめる（scripts/check-commit-msg.sh）。
+  # フックを入れていないクローンや --no-verify のコミットもここで見つける。
+  commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 範囲の手前のコミットまで要る。
+          fetch-depth: 0
+
+      - name: Check commit messages
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            from=$PR_BASE to=$PR_HEAD
+          elif [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            # ブランチを作った push や force push は範囲が取れないので、最新のコミットだけを見る。
+            from=$AFTER~1 to=$AFTER
+          else
+            from=$BEFORE to=$AFTER
+          fi
+          for c in $(git rev-list --no-merges "$from..$to"); do
+            git log -1 --format=%B "$c" > "$RUNNER_TEMP/msg"
+            scripts/check-commit-msg.sh "$RUNNER_TEMP/msg" || { echo "↑ $c"; exit 1; }
+          done
+
   check:
     runs-on: ubuntu-latest
     steps:

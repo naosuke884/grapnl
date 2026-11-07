@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/naosuke884/grapnl/actions/workflows/ci.yml/badge.svg)](https://github.com/naosuke884/grapnl/actions/workflows/ci.yml)
 
-push と PR ごとに、書式・lint・テスト・WASM ビルドを GitHub Actions で確かめています（`.github/workflows/ci.yml`）。
+push と PR ごとに、コミットメッセージ・書式・lint・テスト・WASM ビルドを GitHub Actions で確かめています（`.github/workflows/ci.yml`）。
 
 Rust + [macroquad](https://github.com/not-fl3/macroquad) で作る、ブラウザ向け 2D アクションの土台です。
 
@@ -112,6 +112,15 @@ python3 scripts/gen-bgm.py
 ```
 
 macroquad の audio は JS 側の関数を import 先の指定なしで宣言していて、今の rustc ではリンクで落ちます。そのため `.cargo/config.toml` で、WASM のリンクだけ未定義の関数を JS からの import として通しています。
+
+## コミットメッセージ
+
+件名は日本語の 1 文で、何をするかを書きます（`feat:` のような接頭辞は付けず、終わりに「。」を付けない、72 文字まで）。本文は空行を挟んで、なぜ変えたかを書きます。`scripts/check-commit-msg.sh` が確かめ、[lefthook](https://github.com/evilmartians/lefthook) の commit-msg フック（`lefthook.yml`）がコミットのたびに、CI が push と PR の各コミットに呼びます。フックは各クローンで一度入れます。
+
+```sh
+pip install lefthook   # brew install lefthook や npm i -g lefthook でもよい
+lefthook install
+```
 
 ## 方針
 

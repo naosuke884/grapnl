@@ -3,6 +3,7 @@ mod game;
 mod generator;
 mod hitstop;
 mod level;
+mod menu;
 mod particles;
 mod player;
 mod realtime;
@@ -15,7 +16,9 @@ use macroquad::prelude::*;
 
 use game::{Game, VIEW_HEIGHT};
 use hitstop::HitStop;
+use menu::{Action, Menu};
 use player::WireInput;
+use roommate_sdk::DeleteStatus;
 use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
@@ -61,6 +64,8 @@ async fn main() {
     let mut shake = Shake::default();
     // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
     let mut hit_stop = HitStop::default();
+    // 遊んでいない間に出している画面。開いたときはタイトルから始め、遊んでいる間は None。
+    let mut menu = Some(Menu::Title);
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -70,21 +75,59 @@ async fn main() {
         let aim = camera.screen_to_world(mouse_position().into());
         wire_pressed |= is_mouse_button_pressed(MouseButton::Left);
         boost_pressed |= is_mouse_button_pressed(MouseButton::Right);
-        if game.over {
+        let clicked = is_mouse_button_pressed(MouseButton::Left);
+        let screen = vec2(screen_width(), screen_height());
+        let mouse = Vec2::from(mouse_position());
+        let measure = |label: &str, size: f32| text.width(label, size);
+        let delete_status = roommate_sdk::delete_status();
+        if let Some(current) = menu {
+            // 画面のボタンを押したクリックでゲームが始まったり、ワイヤーを撃ったりしないよう、
+            // 遊んでいない間のクリックはここで使い切る。
+            if clicked {
+                let buttons = menu::buttons(current, delete_status, screen, &measure);
+                match menu::click(current, mouse, &buttons) {
+                    Action::None => {}
+                    Action::Start => {
+                        // タイトルを出している間に日付が変わっていても、今日のコースで始める。
+                        game = Game::new();
+                        realtime::join(&game::room_key(game.seed()));
+                        accumulator = 0.0;
+                        until_send = 0.0;
+                        hit_stop = HitStop::default();
+                        menu = None;
+                    }
+                    Action::OpenConfirm => menu = Some(Menu::ConfirmDelete),
+                    Action::Delete => {
+                        roommate_sdk::request_delete();
+                        menu = Some(Menu::DeleteResult);
+                    }
+                    Action::BackToTitle => menu = Some(Menu::Title),
+                }
+            }
+            wire_pressed = false;
+            boost_pressed = false;
+        } else if game.over {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
             if retry_requested(
                 since_over,
-                is_mouse_button_pressed(MouseButton::Left),
+                clicked,
                 is_key_pressed(KeyCode::R),
                 is_key_pressed(KeyCode::Space),
             ) {
+                // 右下の「タイトルへ」をクリックしたときは、始めずにタイトルを出す。データはタイトルから消す。
+                let to_title =
+                    menu::corner_button(menu::TITLE_LABEL, Action::BackToTitle, screen, &measure);
+                let back_to_title = clicked && to_title.contains(mouse);
                 game = Game::new();
                 // 日付が変わっていれば、新しいコースの部屋へ移る。
                 realtime::join(&game::room_key(game.seed()));
                 accumulator = 0.0;
                 since_over = 0.0;
                 hit_stop = HitStop::default();
+                if back_to_title {
+                    menu = Some(Menu::Title);
+                }
             }
             wire_pressed = false;
             boost_pressed = false;
@@ -122,8 +165,8 @@ async fn main() {
             }
         }
         shadows.forget_stale(now);
-        // 終わった後は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over {
+        // 終わった後とタイトルなどの画面の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
+        if !game.over && menu.is_none() {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -205,7 +248,16 @@ async fn main() {
             }
         }
         if game.over {
-            draw_game_over(&text, &game, since_over, &best);
+            draw_game_over(&text, &game, since_over, &best, delete_status);
+            if since_over >= RETRY_DELAY {
+                let to_title =
+                    menu::corner_button(menu::TITLE_LABEL, Action::BackToTitle, screen, &measure);
+                menu::draw_corner_button(&text, &to_title, mouse);
+            }
+        }
+        if let Some(current) = menu {
+            let buttons = menu::buttons(current, delete_status, screen, &measure);
+            menu::draw(&text, current, delete_status, &buttons, mouse);
         }
 
         next_frame().await
@@ -254,7 +306,13 @@ fn best_label(best: Option<u32>) -> String {
     }
 }
 
-fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str) {
+fn draw_game_over(
+    text: &Text,
+    game: &Game,
+    since_over: f32,
+    best: &str,
+    delete_status: DeleteStatus,
+) {
     draw_rectangle(
         0.0,
         0.0,
@@ -292,6 +350,15 @@ fn draw_game_over(text: &Text, game: &Game, since_over: f32, best: &str) {
             center.y + 102.0,
             24.0,
             Color::from_rgba(180, 190, 205, 255),
+        );
+    }
+    if delete_status == DeleteStatus::Done {
+        text.draw_centered(
+            menu::NOT_RECORDED,
+            center.x,
+            center.y + 142.0,
+            22.0,
+            menu::NOTICE,
         );
     }
 }

@@ -36,6 +36,11 @@ impl Text {
         );
     }
 
+    /// `text` を描いたときの幅。
+    pub fn width(&self, text: &str, font_size: f32) -> f32 {
+        measure_text(text, Some(&self.font), font_size as u16, 1.0).width
+    }
+
     pub fn draw_centered(
         &self,
         text: &str,
@@ -44,10 +49,9 @@ impl Text {
         font_size: f32,
         color: Color,
     ) {
-        let dimensions = measure_text(text, Some(&self.font), font_size as u16, 1.0);
         self.draw(
             text,
-            center_x - dimensions.width / 2.0,
+            center_x - self.width(text, font_size) / 2.0,
             baseline_y,
             font_size,
             color,
@@ -145,13 +149,14 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 13] = [
+    const SOURCES: [(&str, &str); 14] = [
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),
         ("hitstop.rs", include_str!("hitstop.rs")),
         ("level.rs", include_str!("level.rs")),
         ("main.rs", include_str!("main.rs")),
+        ("menu.rs", include_str!("menu.rs")),
         ("particles.rs", include_str!("particles.rs")),
         ("player.rs", include_str!("player.rs")),
         ("realtime.rs", include_str!("realtime.rs")),

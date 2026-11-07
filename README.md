@@ -115,7 +115,7 @@ macroquad の audio は JS 側の関数を import 先の指定なしで宣言し
 
 ## コミットメッセージ
 
-件名は日本語の 1 文で、何をするかを書きます（`feat:` のような接頭辞は付けず、終わりに「。」を付けない、72 文字まで）。本文は空行を挟んで、なぜ変えたかを書きます。`scripts/check-commit-msg.sh` が確かめ、[lefthook](https://github.com/evilmartians/lefthook) の commit-msg フック（`lefthook.yml`）がコミットのたびに、CI が push と PR の各コミットに呼びます。フックは各クローンで一度入れます。
+[Conventional Commits](https://www.conventionalcommits.org/ja/v1.0.0/) の形で書きます（`type(scope): 件名`。type は feat fix docs style refactor perf test build ci chore revert、1 行目は 100 文字まで、件名の終わりに「。」「.」を付けない）。本文は空行を挟んで、なぜ変えたかを書きます。`scripts/check-commit-msg.sh` が確かめ、[lefthook](https://github.com/evilmartians/lefthook) の commit-msg フック（`lefthook.yml`）がコミットのたびに、CI が push と PR の各コミットに呼びます。この形にする前のコミットは接頭辞なしの日本語の 1 文で書いていますが、CI は push と PR で増えたコミットだけを見るので落ちません。フックは各クローンで一度入れます。
 
 ```sh
 pip install lefthook   # brew install lefthook や npm i -g lefthook でもよい

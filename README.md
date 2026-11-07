@@ -40,6 +40,19 @@ cargo run
 
 リサイズできるウィンドウが開きます。枠と中央の解像度表示は、ウィンドウサイズに合わせて毎フレーム配置し直します。
 
+## 画面の文字とフォント
+
+画面の文字は日本語で、`src/text.rs` の `Text` で描きます。macroquad の既定のフォントは日本語を描けないので、`draw_text` は使いません。
+
+フォントは [M PLUS 1p](https://fonts.google.com/specimen/M+PLUS+1p) Bold（SIL OFL 1.1、`assets/fonts/OFL.txt`）を、`src/` の文字列リテラルで使う文字だけに絞って `assets/fonts/MPLUS1p-Bold-subset.ttf` に置き、wasm に埋め込んでいます。文字列に新しい文字を足したら、絞り直します。
+
+```sh
+pip install fonttools
+python3 scripts/subset-font.py
+```
+
+絞り直し忘れは `cargo test` が見つけます。
+
 ## WASM をビルドしてブラウザで確認する
 
 ```sh

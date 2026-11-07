@@ -181,7 +181,7 @@ async fn main() {
         // 自己ベストは roommate-sdk が持つ。開いた後にサーバーの値が届くと下がることもあり、
         // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
         let best = best_label(roommate_sdk::best_score());
-        board.update();
+        board.update(&text);
         let now = get_time();
         while let Some(message) = realtime::receive() {
             if let Some(incoming) = shadow::read_incoming(&message) {

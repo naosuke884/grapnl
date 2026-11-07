@@ -15,7 +15,7 @@ if [[ ! "$version" =~ ^[A-Za-z0-9]+$ ]]; then
 fi
 
 mkdir -p "$out"
-for file in index.html mq_js_bundle.js roommate-sdk.js realtime.js grapnl.wasm; do
+for file in index.html mq_js_bundle.js roommate-sdk.js realtime.js grapnl.wasm MPLUS1p-Bold-names.ttf; do
     install -m 644 "$root/web/$file" "$out/$file"
 done
 

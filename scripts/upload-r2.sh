@@ -17,4 +17,6 @@ put mq_js_bundle.js "text/javascript; charset=utf-8"
 put roommate-sdk.js "text/javascript; charset=utf-8"
 put realtime.js "text/javascript; charset=utf-8"
 put grapnl.wasm "application/wasm"
+# ランキングの名前を描くフォント。描けない名前があったときだけゲームが読み込む。
+put MPLUS1p-Bold-names.ttf "font/ttf"
 put index.html "text/html; charset=utf-8"

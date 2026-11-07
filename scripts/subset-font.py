@@ -23,6 +23,9 @@ SOURCE_URL = (
 SOURCE_SHA256 = "76eb077b0a31ca33ca40238e47da5a17e2786741607cec09678d7d2e5ab1afc1"
 SOURCE = ROOT / "target" / "fonts" / "MPLUS1p-Bold.ttf"
 OUTPUT = ROOT / "assets" / "fonts" / "MPLUS1p-Bold-subset.ttf"
+# ランキングの名前は誰でも付けられるので、全文字を入れたものを別に置く。
+# ゲームは描けない名前があったときだけ後から読み込む（src/ranking.rs）。
+NAMES_OUTPUT = ROOT / "web" / "MPLUS1p-Bold-names.ttf"
 
 
 def string_literal_chars(source: str) -> set[str]:
@@ -98,6 +101,21 @@ def main() -> int:
         check=True,
     )
     print(f"{OUTPUT.relative_to(ROOT)}: {len(text)} 文字, {OUTPUT.stat().st_size} バイト")
+
+    # 文字は絞らず、ヒントと組版の機能だけ落として小さくする。
+    subprocess.run(
+        [
+            "pyftsubset",
+            str(SOURCE),
+            "--unicodes=*",
+            f"--output-file={NAMES_OUTPUT}",
+            "--layout-features=",
+            "--no-hinting",
+            "--desubroutinize",
+        ],
+        check=True,
+    )
+    print(f"{NAMES_OUTPUT.relative_to(ROOT)}: {NAMES_OUTPUT.stat().st_size} バイト")
     return 0
 
 

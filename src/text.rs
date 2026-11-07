@@ -9,16 +9,39 @@ const SIZES: [u16; 4] = [22, 24, 28, 56];
 /// 画面の文字を描く。macroquad の既定のフォントは日本語を描けないので、すべての文字はこれで描く。
 pub struct Text {
     font: Font,
+    /// フォントに入っている文字。並べてある。
+    chars: Vec<char>,
 }
 
 impl Text {
     pub fn load() -> Self {
         let font = load_ttf_font_from_bytes(FONT_BYTES).expect("同梱のフォントを読めない");
-        let chars = font_chars();
+        let chars = font_chars(FONT_BYTES);
         for size in SIZES {
             font.populate_font_cache(&chars, size);
         }
-        Self { font }
+        Self { font, chars }
+    }
+
+    /// 後から読み込んだフォント。文字の画像は描くときに作る。読めなければ `None`。
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let font = load_ttf_font_from_bytes(bytes).ok()?;
+        Some(Self {
+            font,
+            chars: font_chars(bytes),
+        })
+    }
+
+    /// その文字を描けるか。
+    pub fn has(&self, c: char) -> bool {
+        self.chars.binary_search(&c).is_ok()
+    }
+
+    /// 描けない文字を「?」に置き換える。
+    pub fn drawable(&self, text: &str) -> String {
+        text.chars()
+            .map(|c| if self.has(c) { c } else { '?' })
+            .collect()
     }
 
     /// 描いたときの大きさ。
@@ -125,10 +148,10 @@ impl Text {
     }
 }
 
-/// 絞ったフォントに入っている文字。
-fn font_chars() -> Vec<char> {
+/// フォントに入っている文字。並べて返す。
+fn font_chars(bytes: &[u8]) -> Vec<char> {
     let mut chars = Vec::new();
-    let Ok(face) = ttf_parser::Face::parse(FONT_BYTES, 0) else {
+    let Ok(face) = ttf_parser::Face::parse(bytes, 0) else {
         return chars;
     };
     let Some(cmap) = face.tables().cmap else {

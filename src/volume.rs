@@ -4,6 +4,7 @@
 use macroquad::prelude::*;
 
 use crate::page;
+use crate::sprites::{draw_icon, Sprites};
 use crate::text::{self, Text};
 
 /// 音量の段階の数。いちばん上が、音を作ったときの大きさ。
@@ -116,10 +117,12 @@ pub enum Control {
 const BAR_WIDTH: f32 = 34.0;
 const BAR_GAP: f32 = 8.0;
 const BAR_HEIGHT: f32 = 36.0;
-const LABEL_WIDTH: f32 = 64.0;
-const BUTTON_WIDTH: f32 = 128.0;
-const BUTTON_GAP: f32 = 24.0;
+/// 左端の、スピーカーの絵の消す・出すボタン。
+const BUTTON_WIDTH: f32 = 52.0;
+const BUTTON_GAP: f32 = 20.0;
 const PADDING: f32 = 16.0;
+/// スピーカーの絵のドット 1 つの大きさ（ピクセル）。
+const ICON_DOT: f32 = 3.0;
 
 /// 一時停止の画面で、音量の操作を置く場所。画面の文字と同じ座標（`Playfield::hud_camera`）。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -132,7 +135,7 @@ impl Panel {
     /// `center_x` を中心に、上端を `top` にして置く。
     pub fn new(center_x: f32, top: f32) -> Self {
         let bars = LEVELS as f32 * BAR_WIDTH + (LEVELS - 1) as f32 * BAR_GAP;
-        let width = LABEL_WIDTH + bars + BUTTON_GAP + BUTTON_WIDTH;
+        let width = BUTTON_WIDTH + BUTTON_GAP + bars;
         Self {
             row: Rect::new(center_x - width / 2.0, top, width, BAR_HEIGHT),
         }
@@ -149,17 +152,12 @@ impl Panel {
     }
 
     fn bar(&self, level: u32) -> Rect {
-        let x = self.row.x + LABEL_WIDTH + (level - 1) as f32 * (BAR_WIDTH + BAR_GAP);
+        let x = self.row.x + BUTTON_WIDTH + BUTTON_GAP + (level - 1) as f32 * (BAR_WIDTH + BAR_GAP);
         Rect::new(x, self.row.y, BAR_WIDTH, BAR_HEIGHT)
     }
 
     fn mute_button(&self) -> Rect {
-        Rect::new(
-            self.row.right() - BUTTON_WIDTH,
-            self.row.y,
-            BUTTON_WIDTH,
-            BAR_HEIGHT,
-        )
+        Rect::new(self.row.x, self.row.y, BUTTON_WIDTH, BAR_HEIGHT)
     }
 
     /// `point` にあるボタン。
@@ -176,7 +174,7 @@ impl Panel {
             .map(Control::Level)
     }
 
-    pub fn draw(&self, text: &Text, volume: &Volume, hovered: Option<Control>) {
+    pub fn draw(&self, text: &Text, sprites: &Sprites, volume: &Volume, hovered: Option<Control>) {
         let frame = self.frame();
         draw_rectangle(
             frame.x,
@@ -184,14 +182,6 @@ impl Panel {
             frame.w,
             frame.h,
             Color::from_rgba(20, 24, 32, 230),
-        );
-        let label_color = Color::from_rgba(180, 190, 205, 255);
-        text.draw_y_centered(
-            "音量",
-            self.row.x,
-            self.row.center().y,
-            text::SMALL,
-            label_color,
         );
 
         let lit = Color::from_rgba(140, 220, 160, 255);
@@ -215,26 +205,21 @@ impl Panel {
             }
         }
 
+        // 消す・出すボタン。音を出しているときはスピーカー、消しているときは × 付きのスピーカー。
         let button = self.mute_button();
-        let (label, fill) = if volume.muted {
-            ("音を出す", Color::from_rgba(200, 90, 100, 255))
+        let (icon, fill) = if volume.muted {
+            (&sprites.speaker_off, Color::from_rgba(200, 90, 100, 255))
         } else {
-            ("音を消す", Color::from_rgba(60, 66, 80, 255))
+            (&sprites.speaker_on, Color::from_rgba(60, 66, 80, 255))
         };
         draw_rectangle(button.x, button.y, button.w, button.h, fill);
         if hovered == Some(Control::Mute) {
             draw_rectangle_lines(button.x, button.y, button.w, button.h, 2.0, WHITE);
         }
-        text.draw_centered(
-            label,
-            button.center().x,
-            button.center().y + 8.0,
-            text::SMALL,
-            WHITE,
-        );
+        draw_icon(icon, button.center(), ICON_DOT, WHITE);
 
         text.draw_centered(
-            "← → で音量   M で消す・出す",
+            "← →  Volume     M  Mute",
             frame.center().x,
             frame.bottom() + 28.0,
             text::SMALL,

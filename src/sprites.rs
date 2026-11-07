@@ -118,6 +118,28 @@ const OUT_OF_REACH: &[&str] = &[
     "XX...XX", //
     ".XX.XX.", "..XXX..", "...X...", "..XXX..", ".XX.XX.", "XX...XX",
 ];
+/// 音を出しているときのスピーカー。一時停止の画面の音量の操作に使う。11×8。
+const SPEAKER_ON: &[&str] = &[
+    "....X......", //
+    "...XX...X..",
+    "XXXXX.X..X.",
+    "XXXXX..X.X.",
+    "XXXXX..X.X.",
+    "XXXXX.X..X.",
+    "...XX...X..",
+    "....X......",
+];
+/// 音を消しているときのスピーカー。音の波の代わりに × を付ける。11×8。
+const SPEAKER_OFF: &[&str] = &[
+    "....X......", //
+    "...XX......",
+    "XXXXX.X...X",
+    "XXXXX..X.X.",
+    "XXXXX...X..",
+    "XXXXX..X.X.",
+    "...XXX....X",
+    "....X......",
+];
 const MARK_PALETTE: &[(char, Color)] = &[('X', WHITE)];
 
 pub struct Sprites {
@@ -129,6 +151,8 @@ pub struct Sprites {
     pub dasher_flash: Texture2D,
     tile: Texture2D,
     pub aim: Texture2D,
+    pub speaker_on: Texture2D,
+    pub speaker_off: Texture2D,
     pub out_of_reach: Texture2D,
 }
 
@@ -142,6 +166,8 @@ impl Sprites {
             dasher_flash: texture(&silhouette(&image(DASHER, ENEMY_PALETTE))),
             tile: texture(&image(TILE, TILE_PALETTE)),
             aim: texture(&image(AIM, MARK_PALETTE)),
+            speaker_on: texture(&image(SPEAKER_ON, MARK_PALETTE)),
+            speaker_off: texture(&image(SPEAKER_OFF, MARK_PALETTE)),
             out_of_reach: texture(&image(OUT_OF_REACH, MARK_PALETTE)),
         }
     }
@@ -371,6 +397,22 @@ pub fn hook_tail(point: Vec2, toward: Vec2) -> Vec2 {
     vec2(tail.0 as f32 + 0.5, tail.1 as f32 + 0.5) * SPRITE_DOT
 }
 
+/// 画面の文字と同じ座標で、絵を `center` を中心に、ドット 1 つを `dot` ピクセルで描く。
+pub fn draw_icon(texture: &Texture2D, center: Vec2, dot: f32, color: Color) {
+    let size = vec2(texture.width(), texture.height()) * dot;
+    let corner = (center - size / 2.0).round();
+    draw_texture_ex(
+        texture,
+        corner.x,
+        corner.y,
+        color,
+        DrawTextureParams {
+            dest_size: Some(size),
+            ..Default::default()
+        },
+    );
+}
+
 fn texture(image: &Image) -> Texture2D {
     let texture = Texture2D::from_image(image);
     texture.set_filter(FilterMode::Nearest);
@@ -410,8 +452,10 @@ mod tests {
     use super::*;
 
     type Palette = &'static [(char, Color)];
-    const ALL: [(&str, &[&str], Palette); 7] = [
+    const ALL: [(&str, &[&str], Palette); 9] = [
         ("AIM", AIM, MARK_PALETTE),
+        ("SPEAKER_ON", SPEAKER_ON, MARK_PALETTE),
+        ("SPEAKER_OFF", SPEAKER_OFF, MARK_PALETTE),
         ("OUT_OF_REACH", OUT_OF_REACH, MARK_PALETTE),
         ("PLAYER", PLAYER, PLAYER_PALETTE),
         ("FLOATER", FLOATER, ENEMY_PALETTE),

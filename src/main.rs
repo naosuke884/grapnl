@@ -247,10 +247,7 @@ async fn main() {
                 Color::from_rgba(140, 150, 165, 255),
             )
         } else {
-            (
-                "Boost OK".to_owned(),
-                Color::from_rgba(140, 220, 160, 255),
-            )
+            ("Boost OK".to_owned(), Color::from_rgba(140, 220, 160, 255))
         };
         text.draw(&label, 16.0, 116.0, text::SMALL, color);
         if game.chain > 0 {
@@ -281,7 +278,7 @@ async fn main() {
                 text::SMALL,
                 Color::from_rgba(180, 190, 205, 255),
             );
-            volume_panel.draw(&text, &volume, hovered);
+            volume_panel.draw(&text, &sprites, &volume, hovered);
         }
         if game.over {
             draw_game_over(&text, &game, &board, since_over, &best, screen);

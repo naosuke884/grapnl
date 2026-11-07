@@ -74,7 +74,7 @@ python3 -m http.server 8080 --directory web
 
 `web/` が配信用の一式です。
 
-- `index.html` — 上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「名前を変える」「データを消す」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「名前を変える」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
+- `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「名前を変える」「データを消す」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「名前を変える」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
 - `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない

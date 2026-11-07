@@ -16,6 +16,13 @@
     var roomKey = null;
     var queue = [];
     var reconnectTimer = null;
+    // 自分のデータを消した後は、ページを開き直すまで繋がない。
+    var stopped = false;
+
+    function deleted() {
+        var client = window.roommate && window.roommate.client;
+        return !!(client && client.deleteState && client.deleteState() === "done");
+    }
 
     // 匿名 ID のトークンは roommate-sdk が受け持つ。roommate-sdk.js をこれより前に読み込む。
     function getToken() {
@@ -33,7 +40,7 @@
     }
 
     function scheduleReconnect(key) {
-        if (reconnectTimer !== null) return;
+        if (stopped || reconnectTimer !== null) return;
         reconnectTimer = setTimeout(function () {
             reconnectTimer = null;
             if (roomKey === key) connect(key);
@@ -42,6 +49,7 @@
     }
 
     function connect(key) {
+        if (stopped || deleted()) return;
         getToken()
             .then(function (token) {
                 if (roomKey !== key) return;
@@ -91,6 +99,7 @@
 
     function join(key) {
         if (window.location.origin !== PLAY_ORIGIN) return;
+        if (stopped) return;
         if (key === roomKey) return;
         roomKey = key;
         queue = [];
@@ -101,6 +110,24 @@
         }
         connect(key);
     }
+
+    // 部屋を出て、ページを開き直すまで繋ぎ直さない。データを消し終えたときに index.html が呼ぶ。
+    function stop() {
+        stopped = true;
+        roomKey = null;
+        queue = [];
+        if (reconnectTimer !== null) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+        if (socket) {
+            var old = socket;
+            // onclose が繋ぎ直さないよう、先に外してから閉じる。
+            socket = null;
+            old.close();
+        }
+    }
+    window.grapnlRealtime = { stop: stop };
 
     function register_plugin(importObject) {
         importObject.env.realtime_join = function (ptr, len) {

@@ -331,6 +331,8 @@
             function showDone() {
                 openButton.hidden = true;
                 note.hidden = false;
+                // 消した ID のまま影の部屋に残らないよう、WebSocket を閉じ、開き直すまで繋がない。
+                if (window.grapnlRealtime) window.grapnlRealtime.stop();
             }
 
             openButton.addEventListener("click", function () {

@@ -9,12 +9,12 @@ use macroquad::rand::RandGenerator;
 
 use crate::enemy::ENEMY_COLOR;
 use crate::game::Event;
-use crate::sprites::{draw_dot_line, draw_dot_square};
+use crate::sprites::{draw_dot_line, draw_dot_square, SPRITE_DOT};
 
 /// 同時に存在できる粒の数。これを超えたら、残り時間が一番短い粒を上書きする。
-const MAX_PARTICLES: usize = 96;
+const MAX_PARTICLES: usize = 192;
 /// 敵を倒したときに飛ばす破片の数。
-pub(crate) const FRAGMENT_COUNT: usize = 12;
+pub(crate) const FRAGMENT_COUNT: usize = 16;
 /// ワイヤーが刺さったときに出す火花の数。破片より少なく、小さく、早く消える。
 pub(crate) const SPARK_COUNT: usize = 6;
 /// 破片にかける重力。自機より弱く、散ったあと弧を描いて落ちる。
@@ -27,6 +27,13 @@ const SPARK_COLOR: Color = Color {
     a: 1.0,
 };
 
+/// 倒した瞬間の白い閃光と、広がる輪の色。
+const FLASH_COLOR: Color = Color::new(1.0, 1.0, 0.94, 1.0);
+/// 倒した後にふわっと残るきらめきの色。
+const TWINKLE_COLOR: Color = Color::new(1.0, 0.95, 0.6, 1.0);
+/// 破片の明るい面。
+const FRAGMENT_LIGHT: Color = Color::new(0.78, 0.98, 0.80, 1.0);
+
 /// 破片の種類。色と消え方はここから決まる。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParticleKind {
@@ -34,6 +41,12 @@ pub enum ParticleKind {
     Fragment,
     /// 刺さった点の火花。
     Spark,
+    /// 倒した瞬間に一瞬だけ光る、ひし形の閃光。
+    Flash,
+    /// 倒した場所から広がる輪。
+    Ring,
+    /// 倒した後、ゆっくり漂って瞬くきらめき。
+    Twinkle,
 }
 
 struct Style {
@@ -41,6 +54,8 @@ struct Style {
     speed: (f32, f32),
     life: (f32, f32),
     size: (f32, f32),
+    /// 重力のかかり方。閃光と輪は動かさず、きらめきはゆっくり落ちる。
+    gravity: f32,
 }
 
 fn style_of(kind: ParticleKind) -> Style {
@@ -49,13 +64,36 @@ fn style_of(kind: ParticleKind) -> Style {
             count: FRAGMENT_COUNT,
             speed: (280.0, 700.0),
             life: (0.36, 0.52),
-            size: (14.0, 22.0),
+            size: (10.0, 26.0),
+            gravity: 1.0,
         },
         ParticleKind::Spark => Style {
             count: SPARK_COUNT,
             speed: (240.0, 640.0),
             life: (0.08, 0.16),
             size: (7.0, 11.0),
+            gravity: 1.0,
+        },
+        ParticleKind::Flash => Style {
+            count: 1,
+            speed: (0.0, 0.0),
+            life: (0.12, 0.12),
+            size: (56.0, 56.0),
+            gravity: 0.0,
+        },
+        ParticleKind::Ring => Style {
+            count: 1,
+            speed: (0.0, 0.0),
+            life: (0.32, 0.32),
+            size: (110.0, 110.0),
+            gravity: 0.0,
+        },
+        ParticleKind::Twinkle => Style {
+            count: 5,
+            speed: (90.0, 260.0),
+            life: (0.5, 0.9),
+            size: (12.0, 12.0),
+            gravity: 0.12,
         },
     }
 }
@@ -71,6 +109,7 @@ pub struct Particle {
     size: f32,
     angle: f32,
     spin: f32,
+    gravity: f32,
 }
 
 impl Particle {
@@ -79,6 +118,8 @@ impl Particle {
         let mut color = match self.kind {
             ParticleKind::Fragment => ENEMY_COLOR,
             ParticleKind::Spark => SPARK_COLOR,
+            ParticleKind::Flash | ParticleKind::Ring => FLASH_COLOR,
+            ParticleKind::Twinkle => TWINKLE_COLOR,
         };
         color.a = fade;
         color
@@ -89,6 +130,14 @@ impl Particle {
 pub struct Particles {
     slots: Vec<Particle>,
     rng: RandGenerator,
+}
+
+/// 横に `width` の長さ、高さ 1 ドットの帯を、ドットの格子に揃えて描く。
+fn draw_dot_square_row(left: f32, center_y: f32, width: f32, color: Color) {
+    let dot = SPRITE_DOT;
+    let x = (left / dot).round() * dot;
+    let y = ((center_y - dot / 2.0) / dot).round() * dot;
+    draw_rectangle(x, y, width, dot, color);
 }
 
 impl Particles {
@@ -106,14 +155,40 @@ impl Particles {
     /// 死んでいる枠があればそこを上書きする。
     pub fn spawn(&mut self, event: Event) {
         match event {
-            Event::EnemyKilled { at, .. } => self.burst(at, ParticleKind::Fragment, Vec2::ZERO),
+            Event::EnemyKilled { at, multiplier } => {
+                // 閃光と輪で弾けた瞬間を見せ、破片を飛ばし、きらめきを残す。連鎖の倍率が上がるほど大きく、多くする。
+                let scale = 1.0 + 0.25 * (multiplier as f32 - 1.0);
+                self.burst_scaled(at, ParticleKind::Flash, Vec2::ZERO, scale, 0);
+                self.burst_scaled(at, ParticleKind::Ring, Vec2::ZERO, scale, 0);
+                self.burst(at, ParticleKind::Fragment, Vec2::ZERO);
+                self.burst_scaled(
+                    at,
+                    ParticleKind::Twinkle,
+                    Vec2::ZERO,
+                    1.0,
+                    multiplier as usize - 1,
+                );
+            }
             Event::WireAttached { at, normal } => self.burst(at, ParticleKind::Spark, normal),
             _ => {}
         }
     }
 
     fn burst(&mut self, at: Vec2, kind: ParticleKind, normal: Vec2) {
-        let style = style_of(kind);
+        self.burst_scaled(at, kind, normal, 1.0, 0);
+    }
+
+    /// `scale` 倍の大きさで、`extra` 個多く出す。
+    fn burst_scaled(
+        &mut self,
+        at: Vec2,
+        kind: ParticleKind,
+        normal: Vec2,
+        scale: f32,
+        extra: usize,
+    ) {
+        let mut style = style_of(kind);
+        style.count += extra;
         // 向きが無ければ全方向へ。刺さった火花は、地形の中へ埋まらないよう外側の半円だけへ飛ばす。
         let (center, arc) = if normal.length_squared() > 0.0 {
             (normal.y.atan2(normal.x), std::f32::consts::PI)
@@ -131,9 +206,10 @@ impl Particles {
                 kind,
                 life,
                 max_life: life,
-                size: self.rng.gen_range(style.size.0, style.size.1),
+                size: self.rng.gen_range(style.size.0, style.size.1) * scale,
                 angle: self.rng.gen_range(0.0, std::f32::consts::TAU),
                 spin: self.rng.gen_range(-10.0, 10.0),
+                gravity: style.gravity,
             });
         }
     }
@@ -166,10 +242,15 @@ impl Particles {
             if particle.life <= 0.0 {
                 continue;
             }
-            particle.velocity.y += GRAVITY * dt;
+            particle.velocity.y += GRAVITY * particle.gravity * dt;
             particle.position += particle.velocity * dt;
             particle.angle += particle.spin * dt;
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn count_of(&self, kind: ParticleKind) -> usize {
+        self.alive().filter(|p| p.kind == kind).count()
     }
 
     #[cfg(test)]
@@ -182,17 +263,60 @@ impl Particles {
     }
 
     pub fn draw(&self) {
+        let dot = SPRITE_DOT;
         for particle in self.alive() {
             let color = particle.color();
+            // 0 から 1 へ進む、生まれてからの割合。
+            let age = 1.0 - particle.life / particle.max_life;
             match particle.kind {
-                // ドット絵に合わせ、回さずにドットの格子に揃えた四角で描く。
+                // ドット絵に合わせ、回さずにドットの格子に揃えた四角で描く。大きい破片は左上を明るくする。
                 ParticleKind::Fragment => {
                     draw_dot_square(particle.position, particle.size, color);
+                    if particle.size >= 3.0 * dot {
+                        let light = Color {
+                            a: color.a,
+                            ..FRAGMENT_LIGHT
+                        };
+                        let corner = particle.position - Vec2::splat(particle.size / 2.0 - dot);
+                        draw_dot_square(corner, dot, light);
+                    }
                 }
                 ParticleKind::Spark => {
                     let dir = particle.velocity.normalize_or_zero();
                     let end = particle.position + dir * (particle.size * 1.8);
                     draw_dot_line(particle.position, end, color, true);
+                }
+                // 中心から縦横に伸びるひし形。すぐに縮んで消える。
+                ParticleKind::Flash => {
+                    let radius = (particle.size * (1.0 - age) / dot).round() as i32;
+                    for row in -radius..=radius {
+                        let half = radius - row.abs();
+                        let y = particle.position.y + row as f32 * dot;
+                        let width = (2 * half + 1) as f32 * dot;
+                        draw_dot_square_row(particle.position.x - width / 2.0, y, width, color);
+                    }
+                }
+                // 速く広がって細くなる輪。ドットを円周に並べて描く。
+                ParticleKind::Ring => {
+                    let eased = 1.0 - (1.0 - age) * (1.0 - age);
+                    let radius = particle.size * (0.25 + 0.75 * eased);
+                    let steps = ((std::f32::consts::TAU * radius / dot) as usize).max(8);
+                    let thickness = if age < 0.5 { 2.0 } else { 1.0 };
+                    for i in 0..steps {
+                        let dir = Vec2::from_angle(i as f32 / steps as f32 * std::f32::consts::TAU);
+                        draw_dot_square(particle.position + dir * radius, thickness * dot, color);
+                    }
+                }
+                // 十字に光るきらめき。瞬きながら薄れる。
+                ParticleKind::Twinkle => {
+                    let blink = (particle.life * 30.0).sin() > -0.3;
+                    if blink {
+                        let p = particle.position;
+                        draw_dot_square(p, dot, WHITE);
+                        for dir in [Vec2::X, -Vec2::X, Vec2::Y, -Vec2::Y] {
+                            draw_dot_square(p + dir * dot, dot, color);
+                        }
+                    }
                 }
             }
         }
@@ -220,24 +344,27 @@ mod tests {
         let mut particles = Particles::new(1);
         let at = vec2(100.0, 200.0);
         particles.spawn(Event::EnemyKilled { at, multiplier: 1 });
-        assert_eq!(particles.alive_count(), FRAGMENT_COUNT);
-        assert!(particles
-            .alive()
-            .all(|p| p.kind == ParticleKind::Fragment && p.position == at));
+        assert_eq!(particles.count_of(ParticleKind::Fragment), FRAGMENT_COUNT);
+        assert_eq!(particles.count_of(ParticleKind::Ring), 1);
+        assert!(particles.alive().all(|p| p.position == at));
         let first = particles
             .alive()
-            .next()
+            .find(|p| p.kind == ParticleKind::Fragment)
             .unwrap()
             .velocity
             .normalize_or_zero();
         assert!(particles
             .alive()
+            .filter(|p| p.kind == ParticleKind::Fragment)
             .any(|p| p.velocity.normalize_or_zero().dot(first) < 0.5));
 
         let mean_vy = |particles: &Particles| {
             let mut sum = 0.0;
             let mut count = 0.0;
-            for particle in particles.alive() {
+            for particle in particles
+                .alive()
+                .filter(|p| p.kind == ParticleKind::Fragment)
+            {
                 sum += particle.velocity.y;
                 count += 1.0;
             }
@@ -248,7 +375,7 @@ mod tests {
         // どの向きへ飛んでも、同じ重力が下へ足される。
         assert!((mean_vy(&particles) - before - super::GRAVITY * DT).abs() < 1e-2);
 
-        for _ in 0..80 {
+        for _ in 0..120 {
             particles.update(DT);
         }
         assert_eq!(particles.alive_count(), 0);
@@ -275,7 +402,11 @@ mod tests {
             at: Vec2::ZERO,
             multiplier: 1,
         });
-        let fragment_color = fragments.alive().next().unwrap().color();
+        let fragment_color = fragments
+            .alive()
+            .find(|p| p.kind == ParticleKind::Fragment)
+            .unwrap()
+            .color();
         assert_eq!(fragment_color.r, ENEMY_COLOR.r);
         assert_eq!(fragment_color.g, ENEMY_COLOR.g);
         assert_eq!(fragment_color.b, ENEMY_COLOR.b);
@@ -301,7 +432,7 @@ mod tests {
         assert_eq!(particles.capacity(), capacity);
 
         for _ in 0..30 {
-            for _ in 0..80 {
+            for _ in 0..120 {
                 particles.update(DT);
             }
             assert_eq!(particles.alive_count(), 0);

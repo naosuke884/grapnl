@@ -849,9 +849,12 @@ mod tests {
         shoot(&mut game, vec2(1.0, 0.0));
         let at = origin + vec2(300.0 - ENEMY_RADIUS, 0.0);
         assert_eq!(game.events, vec![Event::EnemyKilled { at, multiplier: 1 }]);
-        let bits: Vec<_> = game.particles.alive().collect();
+        let bits: Vec<_> = game
+            .particles
+            .alive()
+            .filter(|p| p.kind == ParticleKind::Fragment)
+            .collect();
         assert_eq!(bits.len(), FRAGMENT_COUNT);
-        assert!(bits.iter().all(|p| p.kind == ParticleKind::Fragment));
         assert!(bits.iter().all(|p| p.position.distance(at) < 15.0));
         let color = bits[0].color();
         assert_eq!(

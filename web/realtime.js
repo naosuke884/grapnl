@@ -9,6 +9,8 @@
     var MAX_QUEUE = 64;
     // 繋がらないときは待ち時間を倍にしていく。繋がったら最初に戻す。
     var RECONNECT_MS = 5000;
+    // 同じ ID の新しい接続に席を譲ったときの close code(roommate の apps/api/src/room.ts)。
+    var REPLACED_CLOSE_CODE = 4000;
     var MAX_RECONNECT_MS = 60000;
     var reconnectDelay = RECONNECT_MS;
 
@@ -98,9 +100,12 @@
                     message.set(data, 1);
                     push(message);
                 };
-                ws.onclose = function () {
+                ws.onclose = function (event) {
                     if (socket !== ws) return;
                     socket = null;
+                    // 同じ ID で別のタブなどが同じ部屋に入ると、サーバーは前の接続を 4000 で閉じる。
+                    // 入り直すと今度は向こうを閉じ、交互に追い出し合うので、このタブは入り直さない。
+                    if (event.code === REPLACED_CLOSE_CODE) return;
                     scheduleReconnect(key);
                 };
                 socket = ws;

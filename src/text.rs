@@ -16,6 +16,8 @@ pub const LARGE: f32 = 44.0;
 pub const HEAD_SMALL: f32 = 16.0;
 pub const HEAD_MEDIUM: f32 = 24.0;
 pub const HEAD_LARGE: f32 = 48.0;
+/// 一時停止・ゲームオーバーの画面の囲みの地の色。
+pub const PANEL_COLOR: Color = Color::from_rgba(20, 24, 32, 230);
 
 /// 画面の文字の 3 つのフォント。
 pub struct Fonts {
@@ -241,7 +243,7 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 23] = [
+    const SOURCES: [(&str, &str); 24] = [
         ("background.rs", include_str!("background.rs")),
         ("bgm.rs", include_str!("bgm.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
@@ -251,6 +253,7 @@ mod tests {
         ("level.rs", include_str!("level.rs")),
         ("names.rs", include_str!("names.rs")),
         ("main.rs", include_str!("main.rs")),
+        ("overlay.rs", include_str!("overlay.rs")),
         ("page.rs", include_str!("page.rs")),
         ("particles.rs", include_str!("particles.rs")),
         ("pause.rs", include_str!("pause.rs")),

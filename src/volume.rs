@@ -5,6 +5,7 @@ use macroquad::prelude::*;
 
 use crate::page;
 use crate::sprites::{draw_icon, Sprites};
+use crate::text::PANEL_COLOR;
 
 /// 音量の段階の数。いちばん上が、音を作ったときの大きさ。
 pub const LEVELS: u32 = 5;
@@ -175,13 +176,7 @@ impl Panel {
 
     pub fn draw(&self, sprites: &Sprites, volume: &Volume, hovered: Option<Control>) {
         let frame = self.frame();
-        draw_rectangle(
-            frame.x,
-            frame.y,
-            frame.w,
-            frame.h,
-            Color::from_rgba(20, 24, 32, 230),
-        );
+        draw_rectangle(frame.x, frame.y, frame.w, frame.h, PANEL_COLOR);
 
         let lit = Color::from_rgba(140, 220, 160, 255);
         // 消している間は、段階を覚えていることが分かるよう暗く残す。

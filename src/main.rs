@@ -222,7 +222,7 @@ async fn main() {
         set_camera(&playfield.hud_camera());
         text.draw(
             &format!(
-                "スコア {}   {:.0} m   撃破 {}",
+                "Score {}   {:.0} m   Kills {}",
                 game.score(),
                 game.distance(),
                 game.kills
@@ -243,12 +243,12 @@ async fn main() {
         let cooldown = game.player.boost_cooldown;
         let (label, color) = if cooldown > 0.0 {
             (
-                format!("ブースト {cooldown:.1}"),
+                format!("Boost {cooldown:.1}"),
                 Color::from_rgba(140, 150, 165, 255),
             )
         } else {
             (
-                "ブースト OK".to_owned(),
+                "Boost OK".to_owned(),
                 Color::from_rgba(140, 220, 160, 255),
             )
         };
@@ -256,12 +256,12 @@ async fn main() {
         if game.chain > 0 {
             let multiplier = game.next_multiplier();
             let max = if multiplier == game::MAX_MULTIPLIER {
-                " 最大"
+                " MAX"
             } else {
                 ""
             };
             text.draw(
-                &format!("連鎖 x{multiplier}{max}"),
+                &format!("Chain x{multiplier}{max}"),
                 16.0,
                 88.0,
                 text::MEDIUM,
@@ -275,7 +275,7 @@ async fn main() {
             draw_paused(&text, screen);
             // 操作の説明は遊んでいる間は出さず、一時停止の画面の下にだけ出す。
             text.draw(
-                "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
+                "Left click: shoot / retract wire   Right click: boost   Esc: pause",
                 16.0,
                 screen.y - 16.0,
                 text::SMALL,
@@ -300,9 +300,9 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
 fn draw_paused(text: &Text, screen: Vec2) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
     let center = screen / 2.0;
-    text.draw_centered("一時停止中", center.x, center.y - 10.0, text::LARGE, WHITE);
+    text.draw_centered("PAUSED", center.x, center.y - 10.0, text::LARGE, WHITE);
     text.draw_centered(
-        "Esc かクリックで再開",
+        "Esc or click to resume",
         center.x,
         center.y + 34.0,
         text::SMALL,
@@ -318,8 +318,8 @@ fn volume_panel(screen: Vec2) -> volume::Panel {
 /// 自己ベストの表示。まだ無いとき（初めて遊ぶ前やデータを消した後）は「なし」と出し、0 点と見分ける。
 fn best_label(best: Option<u32>) -> String {
     match best {
-        Some(best) => format!("自己ベスト {best}"),
-        None => "自己ベスト なし".to_owned(),
+        Some(best) => format!("Best {best}"),
+        None => "Best -".to_owned(),
     }
 }
 
@@ -360,7 +360,7 @@ fn draw_game_over(
     let rows = ranking_rows(screen.y);
     let height = game_over_fixed_height() + Board::height(rows);
     let mut y = ((screen.y - height) / 2.0).max(OVER_MARGIN) + OVER_TITLE;
-    text.draw_centered("ゲームオーバー", center_x, y, text::LARGE, WHITE);
+    text.draw_centered("GAME OVER", center_x, y, text::LARGE, WHITE);
     y += OVER_REASON;
     if let Some(reason) = game.end_reason {
         text.draw_centered(
@@ -374,7 +374,7 @@ fn draw_game_over(
     y += OVER_SCORE;
     text.draw_centered(
         &format!(
-            "スコア {}（{:.0} m・撃破 {}）   {best}",
+            "Score {} ({:.0} m, {} kills)   {best}",
             game.score(),
             game.distance(),
             game.kills
@@ -389,7 +389,7 @@ fn draw_game_over(
     y += Board::height(rows) + OVER_RETRY;
     if since_over >= RETRY_DELAY {
         text.draw_centered(
-            "クリックか R かスペースでもう一度",
+            "Click, R or Space to retry",
             center_x,
             y,
             text::SMALL,

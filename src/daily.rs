@@ -39,11 +39,11 @@ pub fn course_line(seed: u64, unix_seconds: f64) -> String {
     let (month, day) = course_date(seed);
     match seconds_until_next_course(seed, unix_seconds) {
         Some(left) => format!(
-            "今日のコース {month}/{day}   次のコースまで {}",
+            "Today's course {month}/{day}   Next course in {}",
             format_countdown(left)
         ),
         // ゲームオーバーの画面のまま日をまたいだ。やり直すと新しい日の種で始まる。
-        None => format!("{month}/{day} のコースは終わり   もう一度で次のコースへ"),
+        None => format!("The {month}/{day} course is over   Retry for the next one"),
     }
 }
 
@@ -100,11 +100,11 @@ mod tests {
         let now = NOV_7_2026 + 86_400.0 - (3.0 * 3_600.0 + 12.0 * 60.0 + 5.0);
         assert_eq!(
             course_line(seed, now),
-            "今日のコース 11/7   次のコースまで 3:12:05"
+            "Today's course 11/7   Next course in 3:12:05"
         );
         assert_eq!(
             course_line(seed, NOV_7_2026 + 86_400.0),
-            "11/7 のコースは終わり   もう一度で次のコースへ"
+            "The 11/7 course is over   Retry for the next one"
         );
     }
 }

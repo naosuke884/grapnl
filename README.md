@@ -22,9 +22,9 @@ Rust + [macroquad](https://github.com/not-fl3/macroquad) で作る、ブラウ�
 - ゲームオーバーの画面に、今日のコースのランキングの上位 5 位と自分の順位が出る
 - 左から赤い領域がだんだん速く迫ってくる。追いつかれるか、下へ落ちるか、敵に触れると終わり
 
-初めて開いたときに、ランキングに出す名前の入力欄が一度だけ出ます（roommate-sdk が出す）。「あとで」で閉じても遊べ、ページの上の細いヘッダーの「名前を変える」でいつでも付けたり変えたりできます。入力欄を開いている間はゲームが一時停止します。
+初めて開いたときに、ランキングに出す名前の入力欄が一度だけ出ます（roommate-sdk が出す）。「あとで」で閉じても遊べ、ページの上の細いヘッダーの「Change name」でいつでも付けたり変えたりできます。入力欄を開いている間はゲームが一時停止します。
 
-ページの上の細いヘッダーの「データを消す」で、自分の匿名 ID と、roommate のすべてのゲームのスコアを消せます。確認のダイアログで「消す」を選ぶと消し、結果を出します。ダイアログを開いている間はゲームが一時停止します。消した後は、ページを開き直すまでスコアを記録しません。
+ページの上の細いヘッダーの「Delete my data」で、自分の匿名 ID と、roommate のすべてのゲームのスコアを消せます。確認のダイアログで「Delete」を選ぶと消し、結果を出します。ダイアログを開いている間はゲームが一時停止します。消した後は、ページを開き直すまでスコアを記録しません。
 
 ページの上の細いヘッダーの左端の「← roommate」で、サイトのゲームページ（説明と今日のランキング）へ戻れます。
 
@@ -53,7 +53,7 @@ cargo run
 
 ## 画面の文字とフォント
 
-画面の文字は日本語で、`src/text.rs` の `Text` で描きます。macroquad の既定のフォントは日本語を描けないので、`draw_text` は使いません。
+画面の文字は英語で、`src/text.rs` の `Text` で描きます。ランキングの名前には日本語も出るので、macroquad の既定のフォントの `draw_text` は使いません。ページのヘッダーとデータを消すダイアログも英語です（名前の入力欄は roommate-sdk が出すので日本語のまま）。
 
 フォントはドットフォントの [DotGothic16](https://fonts.google.com/specimen/DotGothic16)（SIL OFL 1.1、`assets/fonts/OFL.txt`）を、`src/` の文字列リテラルで使う文字だけに絞って `assets/fonts/DotGothic16-Regular-subset.ttf` に置き、wasm に埋め込んでいます。16 ピクセルで作られたフォントなので、ドットが滲まないよう文字の大きさは 16・32・48（`text::SMALL`・`MEDIUM`・`LARGE`）だけを使います。文字列に新しい文字を足したら、絞り直します。
 
@@ -75,7 +75,7 @@ python3 -m http.server 8080 --directory web
 
 `web/` が配信用の一式です。
 
-- `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「名前を変える」「データを消す」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「名前を変える」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
+- `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。上に細いヘッダー（サイトのゲームページへ戻るリンク、名前、「Change name」「Delete my data」）を置き、キャンバスで残りを埋める。右クリックメニューを出さない。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「Change name」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
 - `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない

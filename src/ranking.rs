@@ -147,7 +147,7 @@ impl Board {
         let left = center_x - WIDTH / 2.0;
         let mut baseline = top + ROW_HEIGHT - 6.0;
         text.draw_centered(
-            "今日のランキング",
+            "Today's ranking",
             center_x,
             baseline,
             text::SMALL,
@@ -168,7 +168,7 @@ impl Board {
                     let color = if mine { MINE_COLOR } else { ROW_COLOR };
                     draw_right(
                         text,
-                        &format!("{rank}位"),
+                        &format!("#{rank}"),
                         left + RANK_RIGHT,
                         baseline,
                         color,
@@ -177,7 +177,7 @@ impl Board {
                     draw_right(text, &score.to_string(), left + WIDTH, baseline, color);
                 }
                 Line::Mine(rank) => text.draw_centered(
-                    &format!("あなたは {rank}位"),
+                    &format!("You: #{rank}"),
                     center_x,
                     baseline,
                     text::SMALL,
@@ -197,16 +197,16 @@ fn draw_right(text: &Text, s: &str, right: f32, baseline: f32, color: Color) {
 fn lines(status: &RankingStatus, rows: usize) -> Vec<Line> {
     match status {
         RankingStatus::NotRequested | RankingStatus::Loading => {
-            vec![Line::Note("読み込み中…")]
+            vec![Line::Note("Loading...")]
         }
-        RankingStatus::Failed => vec![Line::Note("読み込めませんでした")],
+        RankingStatus::Failed => vec![Line::Note("Couldn't load the ranking")],
         RankingStatus::Ready(ranking) => ranking_lines(ranking, rows),
     }
 }
 
 fn ranking_lines(ranking: &Ranking, rows: usize) -> Vec<Line> {
     if ranking.entries.is_empty() {
-        return vec![Line::Note("まだ誰も記録していません")];
+        return vec![Line::Note("No scores yet today")];
     }
     let mut lines: Vec<Line> = ranking
         .entries
@@ -272,7 +272,7 @@ mod tests {
     fn says_so_when_nobody_has_played() {
         assert_eq!(
             ranking_lines(&ranking(0, None), MAX_ROWS),
-            vec![Line::Note("まだ誰も記録していません")]
+            vec![Line::Note("No scores yet today")]
         );
         // 自分の記録が無いとき（データを消した後など）は、自分の行を足さない。
         assert_eq!(ranking_lines(&ranking(3, None), MAX_ROWS).len(), 3);
@@ -282,11 +282,11 @@ mod tests {
     fn notes_loading_and_failure() {
         assert_eq!(
             lines(&RankingStatus::Loading, MAX_ROWS),
-            vec![Line::Note("読み込み中…")]
+            vec![Line::Note("Loading...")]
         );
         assert_eq!(
             lines(&RankingStatus::Failed, MAX_ROWS),
-            vec![Line::Note("読み込めませんでした")]
+            vec![Line::Note("Couldn't load the ranking")]
         );
     }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -244,38 +244,38 @@
         </span>
         <span id="header-actions">
             <!-- ランキングに出す名前の入力欄は roommate-sdk が出す。 -->
-            <button type="button" id="name-open">名前を変える</button>
-            <button type="button" id="delete-open">データを消す</button>
+            <button type="button" id="name-open">Change name</button>
+            <button type="button" id="delete-open">Delete my data</button>
         </span>
-        <span id="header-note" hidden>ページを開き直すまでスコアは記録されません</span>
+        <span id="header-note" hidden>Scores won't be saved until you reload the page</span>
     </header>
     <!-- 確認・消している間・結果を、data-state で出し分ける。 -->
     <dialog id="delete-dialog" aria-labelledby="delete-title" data-state="confirm">
         <!-- 消している間と結果は、見出しを書き換えて伝える。 -->
-        <h2 id="delete-title" aria-live="polite">データを消しますか</h2>
+        <h2 id="delete-title" aria-live="polite">Delete your data?</h2>
         <div data-for="confirm">
-            <p>この端末の匿名 ID と、送ったスコアをすべて消します。</p>
-            <p>ID は roommate のゲームで共通なので、ほかのゲームのスコアも消えます。</p>
-            <p>自己ベストと順位も消え、元には戻せません。</p>
-            <p>消した後は、ページを開き直すまで遊んでもスコアは記録されません。</p>
+            <p>This deletes the anonymous ID on this device and every score you have sent.</p>
+            <p>The ID is shared by all roommate games, so your scores in other games are deleted too.</p>
+            <p>Your best scores and ranks go too. This can't be undone.</p>
+            <p>After deleting, scores won't be saved until you reload the page.</p>
         </div>
         <div data-for="done">
-            <p>ほかのゲームの分も含め、スコアと匿名 ID を消しました。</p>
-            <p>自己ベストと順位も消えました。</p>
-            <p>ページを開き直すまで、遊んでもスコアは記録されません。</p>
+            <p>Your scores, including those in other games, and your anonymous ID were deleted.</p>
+            <p>Your best scores and ranks are gone.</p>
+            <p>Scores won't be saved until you reload the page.</p>
         </div>
         <div data-for="failed">
-            <p>データは残っています。</p>
-            <p>通信できるか確かめて、もう一度試してください。</p>
+            <p>Your data is still there.</p>
+            <p>Check your connection and try again.</p>
         </div>
         <form method="dialog">
             <!-- 取り消せない操作なので、最初は「やめる」にフォーカスを置く。 -->
             <button type="button" class="danger" data-for="confirm failed" data-action="delete"></button>
-            <button value="close" data-for="confirm failed" data-autofocus>やめる</button>
-            <button value="close" data-for="done">閉じる</button>
+            <button value="close" data-for="confirm failed" data-autofocus>Cancel</button>
+            <button value="close" data-for="done">Close</button>
         </form>
     </dialog>
-    <p id="loading" role="status">読み込み中<span id="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>
+    <p id="loading" role="status">Loading<span id="loading-dots"><span>.</span><span>.</span><span>.</span></span></p>
     <!-- wasm-bindgen ではなく macroquad 専用ローダー。
          出典: macroquad 0.4.16 の js/mq_js_bundle.js
          https://github.com/not-fl3/macroquad/blob/master/js/mq_js_bundle.js -->
@@ -385,10 +385,10 @@
                 return;
             }
             var TITLES = {
-                confirm: "データを消しますか",
-                deleting: "消しています",
-                done: "データを消しました",
-                failed: "消せませんでした",
+                confirm: "Delete your data?",
+                deleting: "Deleting...",
+                done: "Your data was deleted",
+                failed: "Couldn't delete your data",
             };
 
             function show(state) {
@@ -399,7 +399,7 @@
                     parts[i].hidden = parts[i].dataset.for.split(" ").indexOf(state) < 0;
                 }
                 var deleteButton = dialog.querySelector('[data-action="delete"]');
-                deleteButton.textContent = state === "failed" ? "もう一度" : "消す";
+                deleteButton.textContent = state === "failed" ? "Try again" : "Delete";
             }
 
             function showDone() {

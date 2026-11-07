@@ -94,9 +94,9 @@ impl EndReason {
     /// ゲームオーバーの画面に出す言葉。
     pub fn label(self) -> &'static str {
         match self {
-            Self::Enemy => "敵に触れた",
-            Self::Hazard => "追いつかれた",
-            Self::Fell => "落ちた",
+            Self::Enemy => "Hit an enemy",
+            Self::Hazard => "Caught by the red wall",
+            Self::Fell => "Fell",
         }
     }
 }

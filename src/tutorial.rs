@@ -95,10 +95,10 @@ impl Tutorial {
     /// 今出す説明。`attached` はワイヤーが刺さっているか。
     fn message(&self, attached: bool) -> Option<&'static str> {
         match self.step {
-            Step::Wire if attached => Some("左クリックで ワイヤーを戻す"),
-            Step::Wire => Some("左クリックで カーソルの方へワイヤーを撃つ"),
-            Step::Boost => Some("右クリックで 進んでいる向きへブースト"),
-            Step::Enemy => Some("敵にワイヤーを当てると 倒して大きく跳ねる"),
+            Step::Wire if attached => Some("Left click: retract the wire"),
+            Step::Wire => Some("Left click: shoot the wire toward the cursor"),
+            Step::Boost => Some("Right click: boost the way you're moving"),
+            Step::Enemy => Some("Hit an enemy with the wire to destroy it and bounce"),
             Step::Done => None,
         }
     }
@@ -143,8 +143,8 @@ mod tests {
     #[test]
     fn steps_through_wire_boost_and_enemy() {
         let mut tutorial = Tutorial::with_plays(0);
-        assert_eq!(tutorial.message(true), Some("左クリックで ワイヤーを戻す"));
-        assert!(tutorial.message(false).unwrap().contains("撃つ"));
+        assert_eq!(tutorial.message(true), Some("Left click: retract the wire"));
+        assert!(tutorial.message(false).unwrap().contains("shoot"));
         // 戻しただけでは進まない。撃って刺さったら進む。
         tutorial.observe(&[Event::WirePulledBack], 0.1);
         tutorial.observe(&[Event::WireShot], 0.1);

@@ -329,11 +329,7 @@ impl Game {
             draw_rectangle(x, FALL_LIMIT_Y, dot, height * dot, edge_color);
         }
         // ワイヤーとフックは地形より先に描き、地形に食い込んだ爪を隠す。
-        let hook_normal = self
-            .player
-            .anchor
-            .map_or(Vec2::Y, |anchor| self.level.surface_normal(anchor.point));
-        self.player.draw_wire(hook_normal);
+        self.player.draw_wire();
         self.level.draw(sprites);
         self.enemies.draw(sprites);
         // ワイヤーを持っていないときは、今撃てば刺さる点（敵が手前なら敵）に照準を出す。

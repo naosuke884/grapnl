@@ -52,6 +52,15 @@ pub struct Anchor {
     pub point: Vec2,
     /// 刺さった時点の距離で決まり、その後は変わらない。
     pub length: f32,
+    /// 刺さった面の外向き（上下左右）。フックはこの向きに刺さったまま動かない。
+    pub normal: Vec2,
+}
+
+impl Anchor {
+    /// フックの柄の端の輪。描画用のワイヤーはここから垂れ、ここを支点に振れる。
+    pub fn ring(&self) -> Vec2 {
+        hook_tail(self.point, self.normal)
+    }
 }
 
 pub struct Player {
@@ -215,13 +224,11 @@ impl Player {
             self.rope.clear();
             return;
         };
+        // 描画用のワイヤーは、刺さった点ではなくフックの輪から垂らす。
+        let ring = anchor.ring();
         if self.rope.len() != ROPE_POINTS {
             self.rope = (0..ROPE_POINTS)
-                .map(|i| {
-                    anchor
-                        .point
-                        .lerp(self.position, i as f32 / (ROPE_POINTS - 1) as f32)
-                })
+                .map(|i| ring.lerp(self.position, i as f32 / (ROPE_POINTS - 1) as f32))
                 .collect();
             self.rope_prev = self.rope.clone();
         }
@@ -232,10 +239,11 @@ impl Player {
             self.rope_prev[i] = current;
             self.rope[i] = current + moved + gravity;
         }
-        let segment = anchor.length / (ROPE_POINTS - 1) as f32;
+        let segment =
+            (anchor.length - anchor.point.distance(ring)).max(0.0) / (ROPE_POINTS - 1) as f32;
         let last = ROPE_POINTS - 1;
         for _ in 0..12 {
-            self.rope[0] = anchor.point;
+            self.rope[0] = ring;
             self.rope[last] = self.position;
             for i in 0..last {
                 let delta = self.rope[i + 1] - self.rope[i];
@@ -257,7 +265,7 @@ impl Player {
                 }
             }
         }
-        self.rope[0] = anchor.point;
+        self.rope[0] = ring;
         self.rope[last] = self.position;
     }
 
@@ -269,7 +277,11 @@ impl Player {
         match level.raycast(self.position, dir, MAX_WIRE_LENGTH) {
             Some(point) => {
                 let length = point.distance(self.position).max(MIN_WIRE_LENGTH);
-                self.anchor = Some(Anchor { point, length });
+                self.anchor = Some(Anchor {
+                    point,
+                    length,
+                    normal: level.surface_normal(point),
+                });
                 self.rope.clear();
             }
             None => {
@@ -302,25 +314,18 @@ impl Player {
     }
 
     /// ワイヤーとフックを描く。地形より先に描き、フックの爪の地形に食い込んだ部分を地形で隠す。
-    /// `hook_normal` は刺さっている面の外向き。フックは面に垂直に刺さったまま動かない。
-    pub fn draw_wire(&self, hook_normal: Vec2) {
+    /// フックは刺さった面に垂直なまま動かず、ワイヤーは柄の端の輪から垂れる。
+    pub fn draw_wire(&self) {
         let wire_color = Color::from_rgba(255, 200, 80, 255);
         if let Some(anchor) = self.anchor {
-            let tail = hook_tail(anchor.point, hook_normal);
             if self.rope.len() == ROPE_POINTS {
-                // フックの中にある節は飛ばし、輪から先の節だけを結ぶ。フックの上をワイヤーが横切らない。
-                let reach = tail.distance(anchor.point);
-                let mut start = tail;
-                for &node in &self.rope[1..] {
-                    if node.distance(anchor.point) > reach {
-                        draw_dot_line(start, node, wire_color, false);
-                        start = node;
-                    }
+                for pair in self.rope.windows(2) {
+                    draw_dot_line(pair[0], pair[1], wire_color, false);
                 }
             } else {
-                draw_dot_line(tail, self.position, wire_color, false);
+                draw_dot_line(anchor.ring(), self.position, wire_color, false);
             }
-            draw_dot_hook(anchor.point, hook_normal);
+            draw_dot_hook(anchor.point, anchor.normal);
         }
         if let Some((from, left)) = self.retract {
             // 戻り始めた位置から手元へ縮んでいくように描く。先にはフックを付けたまま戻す。
@@ -420,6 +425,7 @@ mod tests {
         player.anchor = Some(Anchor {
             point: Vec2::ZERO,
             length: 300.0,
+            normal: Vec2::Y,
         });
         let mut highest_right = f32::MAX;
         for _ in 0..240 {
@@ -442,6 +448,7 @@ mod tests {
         player.anchor = Some(Anchor {
             point: Vec2::ZERO,
             length: 300.0,
+            normal: Vec2::Y,
         });
         let mut lowest = 0.0_f32;
         let mut bounced = false;
@@ -473,6 +480,7 @@ mod tests {
         player.anchor = Some(Anchor {
             point: Vec2::ZERO,
             length: 300.0,
+            normal: Vec2::Y,
         });
         for _ in 0..120 {
             player.position = vec2(100.0, 0.0);

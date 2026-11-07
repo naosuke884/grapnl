@@ -1,5 +1,4 @@
 mod bgm;
-mod daily;
 mod enemy;
 mod game;
 mod generator;
@@ -74,6 +73,8 @@ async fn main() {
     let mut accumulator = 0.0;
     // ゲームオーバーになってからの経過時間。
     let mut since_over = 0.0;
+    // このゲームオーバーで自己ベストを更新したか。
+    let mut new_best = false;
     // クリックは描画フレームで受け、次に回る固定刻みの更新で 1 回だけ使う。
     let mut wire_pressed = false;
     let mut boost_pressed = false;
@@ -140,9 +141,11 @@ async fn main() {
         if game.over {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
+            // クリックは「Retry」ボタンの上だけで受け付け、ランキングを見ているときのクリックでは始めない。
+            let on_retry = game_over_layout(screen).retry.contains(pointer);
             if retry_requested(
                 since_over,
-                is_mouse_button_pressed(MouseButton::Left),
+                left_click && on_retry,
                 is_key_pressed(KeyCode::R),
                 is_key_pressed(KeyCode::Space),
             ) {
@@ -179,6 +182,9 @@ async fn main() {
             }
             if game.over {
                 tutorial.finish_run();
+                // 送る前の自己ベストと比べる。送るとすぐ自己ベストが上がる。
+                new_best = game.score() > 0
+                    && roommate_sdk::best_score().is_none_or(|best| game.score() > best);
                 roommate_sdk::submit_score(game.score(), (game.elapsed * 1000.0) as u32);
                 board.request();
             }
@@ -281,7 +287,9 @@ async fn main() {
             volume_panel.draw(&text, &sprites, &volume, hovered);
         }
         if game.over {
-            draw_game_over(&text, &game, &board, since_over, &best, screen);
+            draw_game_over(
+                &text, &game, &board, since_over, new_best, &best, pointer, screen,
+            );
         }
 
         next_frame().await
@@ -324,17 +332,25 @@ fn best_label(best: Option<u32>) -> String {
 const OVER_TITLE: f32 = text::LARGE;
 const OVER_REASON: f32 = 48.0;
 const OVER_SCORE: f32 = 44.0;
-/// スコアの行のベースラインから、ランキングの見出しの上端まで。
-const OVER_RANKING_GAP: f32 = 20.0;
-/// ランキングの表の下端から、やり直しの案内のベースラインまで。
-const OVER_RETRY: f32 = 30.0;
-const OVER_COURSE: f32 = 36.0;
+/// 自己ベストの行。更新したときは「NEW BEST!」を大きく出す。
+const OVER_BEST: f32 = 44.0;
+/// 自己ベストの行のベースラインから、ランキングの見出しの上端まで。
+const OVER_RANKING_GAP: f32 = 16.0;
+/// ランキングの表の下端から、「Retry」ボタンの上端まで。
+const OVER_RETRY_GAP: f32 = 20.0;
+const RETRY_SIZE: Vec2 = vec2(200.0, 52.0);
 /// 画面の上下に残す余白。
 const OVER_MARGIN: f32 = 16.0;
 
 /// ゲームオーバーの画面の、ランキングを除いた高さ。
 fn game_over_fixed_height() -> f32 {
-    OVER_TITLE + OVER_REASON + OVER_SCORE + OVER_RANKING_GAP + OVER_RETRY + OVER_COURSE
+    OVER_TITLE
+        + OVER_REASON
+        + OVER_SCORE
+        + OVER_BEST
+        + OVER_RANKING_GAP
+        + OVER_RETRY_GAP
+        + RETRY_SIZE.y
 }
 
 /// 画面の高さに収まる、ランキングの上位の行数。
@@ -343,20 +359,48 @@ fn ranking_rows(screen_h: f32) -> usize {
     ((room / ranking::ROW_HEIGHT).floor().max(0.0) as usize).min(ranking::MAX_ROWS)
 }
 
+/// ゲームオーバーの画面の置き方。描くときと、「Retry」ボタンのクリックを見るときで同じものを使う。
+struct GameOverLayout {
+    /// 一番上の「GAME OVER」の上端。
+    top: f32,
+    /// ランキングの上位の行数。
+    rows: usize,
+    retry: Rect,
+}
+
+fn game_over_layout(screen: Vec2) -> GameOverLayout {
+    // 行が収まる分だけ出し、全体を縦の中央に置く。
+    let rows = ranking_rows(screen.y);
+    let height = game_over_fixed_height() + Board::height(rows);
+    let top = ((screen.y - height) / 2.0).max(OVER_MARGIN);
+    let retry_top = top + height - RETRY_SIZE.y;
+    GameOverLayout {
+        top,
+        rows,
+        retry: Rect::new(
+            screen.x / 2.0 - RETRY_SIZE.x / 2.0,
+            retry_top,
+            RETRY_SIZE.x,
+            RETRY_SIZE.y,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw_game_over(
     text: &Text,
     game: &Game,
     board: &Board,
     since_over: f32,
+    new_best: bool,
     best: &str,
+    pointer: Vec2,
     screen: Vec2,
 ) {
     draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
     let center_x = screen.x / 2.0;
-    // 行が収まる分だけ出し、全体を縦の中央に置く。
-    let rows = ranking_rows(screen.y);
-    let height = game_over_fixed_height() + Board::height(rows);
-    let mut y = ((screen.y - height) / 2.0).max(OVER_MARGIN) + OVER_TITLE;
+    let layout = game_over_layout(screen);
+    let mut y = layout.top + OVER_TITLE;
     text.draw_centered("GAME OVER", center_x, y, text::LARGE, WHITE);
     y += OVER_REASON;
     if let Some(reason) = game.end_reason {
@@ -371,7 +415,7 @@ fn draw_game_over(
     y += OVER_SCORE;
     text.draw_centered(
         &format!(
-            "Score {} ({:.0} m, {} kills)   {best}",
+            "Score {} ({:.0} m, {} kills)",
             game.score(),
             game.distance(),
             game.kills
@@ -381,27 +425,44 @@ fn draw_game_over(
         text::MEDIUM,
         WHITE,
     );
-    y += OVER_RANKING_GAP;
-    board.draw(text, center_x, y, rows);
-    y += Board::height(rows) + OVER_RETRY;
-    if since_over >= RETRY_DELAY {
+    y += OVER_BEST;
+    if new_best {
+        // 自己ベストを更新したときは、明るい黄色で明滅させて目立たせる。
+        let pulse = (since_over * 6.0).sin() * 0.5 + 0.5;
+        let color = Color::new(1.0, 0.85 + 0.15 * pulse, 0.3 + 0.5 * pulse, 1.0);
+        text.draw_centered("NEW BEST!", center_x, y, text::MEDIUM, color);
+    } else {
         text.draw_centered(
-            "Click, R or Space to retry",
+            best,
             center_x,
-            y,
+            y - 8.0,
             text::SMALL,
-            Color::from_rgba(180, 190, 205, 255),
+            Color::from_rgba(150, 160, 175, 255),
         );
     }
-    y += OVER_COURSE;
-    // 日替わりのコース。ゲームオーバーの画面を出している間も、毎フレーム残り時間を進める。
-    text.draw_centered_steady(
-        &daily::course_line(game.seed(), macroquad::miniquad::date::now()),
-        center_x,
-        y,
-        text::SMALL,
-        Color::from_rgba(150, 200, 235, 255),
-    );
+    y += OVER_RANKING_GAP;
+    board.draw(text, center_x, y, layout.rows);
+    draw_retry_button(text, layout.retry, since_over >= RETRY_DELAY, pointer);
+}
+
+/// 「Retry」ボタン。終わった直後の `RETRY_DELAY` の間は暗くして、押せないことを見せる。
+fn draw_retry_button(text: &Text, rect: Rect, ready: bool, pointer: Vec2) {
+    let hovered = ready && rect.contains(pointer);
+    let fill = match (ready, hovered) {
+        (false, _) => Color::from_rgba(40, 44, 54, 255),
+        (true, false) => Color::from_rgba(60, 120, 80, 255),
+        (true, true) => Color::from_rgba(80, 160, 105, 255),
+    };
+    draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
+    if hovered {
+        draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, WHITE);
+    }
+    let color = if ready {
+        WHITE
+    } else {
+        Color::from_rgba(120, 126, 140, 255)
+    };
+    text.draw_y_centered_middle("Retry", rect.center(), text::MEDIUM, color);
 }
 
 #[cfg(test)]
@@ -415,6 +476,16 @@ mod tests {
         assert!(!retry_requested(just_before, true, false, false));
         assert!(!retry_requested(just_before, false, true, false));
         assert!(!retry_requested(just_before, false, false, true));
+    }
+
+    #[test]
+    fn retry_button_sits_below_the_ranking_on_screen() {
+        for height in [720.0, 400.0] {
+            let screen = vec2(1280.0, height);
+            let layout = game_over_layout(screen);
+            assert!(layout.retry.bottom() <= height);
+            assert!(layout.retry.y >= layout.top + game_over_fixed_height() - RETRY_SIZE.y);
+        }
     }
 
     #[test]

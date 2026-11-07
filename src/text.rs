@@ -89,28 +89,10 @@ impl Text {
         );
     }
 
-    /// 中央に揃えて描くが、数字がどれも「0」の幅だとして位置を決める。
-    /// 毎秒変わる数字（残り時間など）で、文字の列が左右に揺れないようにする。
-    pub fn draw_centered_steady(
-        &self,
-        text: &str,
-        center_x: f32,
-        baseline_y: f32,
-        font_size: f32,
-        color: Color,
-    ) {
-        let template: String = text
-            .chars()
-            .map(|c| if c.is_ascii_digit() { '0' } else { c })
-            .collect();
-        let dimensions = measure_text(&template, Some(&self.font), font_size as u16, 1.0);
-        self.draw(
-            text,
-            center_x - dimensions.width / 2.0,
-            baseline_y,
-            font_size,
-            color,
-        );
+    /// `center` が文字の中心になるように描く。ボタンの文字に使う。
+    pub fn draw_y_centered_middle(&self, text: &str, center: Vec2, font_size: f32, color: Color) {
+        let width = self.measure(text, font_size).width;
+        self.draw_y_centered(text, center.x - width / 2.0, center.y, font_size, color);
     }
 
     /// `center_y` が文字の縦の中心になるように描く。`x` は左端。
@@ -232,9 +214,8 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 23] = [
+    const SOURCES: [(&str, &str); 22] = [
         ("bgm.rs", include_str!("bgm.rs")),
-        ("daily.rs", include_str!("daily.rs")),
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),

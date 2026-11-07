@@ -12,14 +12,14 @@ use crate::text::{self, Text};
 
 /// 上位から出す行数の上限。画面が低いときはこれより減らす。
 pub const MAX_ROWS: usize = 5;
-/// 1 行の高さ。文字は `text::SMALL` の大きさで描く。
-pub const ROW_HEIGHT: f32 = 24.0;
+/// 1 行の高さ。文字は `text::MEDIUM` の大きさで描く。
+pub const ROW_HEIGHT: f32 = 40.0;
 /// 表の横幅。順位・名前・スコアを並べる。
-const WIDTH: f32 = 360.0;
+const WIDTH: f32 = 640.0;
 /// 順位の列の右端（表の左端から）。
-const RANK_RIGHT: f32 = 52.0;
+const RANK_RIGHT: f32 = 80.0;
 /// 名前の列の左端（表の左端から）。
-const NAME_LEFT: f32 = 72.0;
+const NAME_LEFT: f32 = 112.0;
 /// 名前の無い人は、roommate が匿名 ID の頭 4 文字から作る（「名無し#1a2b」）。
 /// よく出るので、絞ったフォントに入れておき、名前用のフォントを読まずに描けるようにする。
 #[allow(dead_code)]
@@ -129,11 +129,11 @@ impl Board {
     /// 名前を描く。名前用のフォントがあればそれで、無ければ描けない文字を「?」にして描く。
     fn draw_name(&self, text: &Text, name: &str, x: f32, baseline: f32, color: Color) {
         if text.drawable(name) == name {
-            text.draw(name, x, baseline, text::SMALL, color);
+            text.draw(name, x, baseline, text::MEDIUM, color);
         } else if let NamesFont::Ready(names) = &self.names {
-            names.draw(&names.drawable(name), x, baseline, text::SMALL, color);
+            names.draw(&names.drawable(name), x, baseline, text::MEDIUM, color);
         } else {
-            text.draw(&text.drawable(name), x, baseline, text::SMALL, color);
+            text.draw(&text.drawable(name), x, baseline, text::MEDIUM, color);
         }
     }
 
@@ -145,19 +145,19 @@ impl Board {
     /// `top` を見出しの上端にして、`center_x` を中心に描く。上位は `rows` 行まで出す。
     pub fn draw(&self, text: &Text, center_x: f32, top: f32, rows: usize) {
         let left = center_x - WIDTH / 2.0;
-        let mut baseline = top + ROW_HEIGHT - 6.0;
+        let mut baseline = top + ROW_HEIGHT - 8.0;
         text.draw_centered(
             "Today's ranking",
             center_x,
             baseline,
-            text::SMALL,
+            text::MEDIUM,
             HEADER_COLOR,
         );
         for line in lines(&self.status, rows) {
             baseline += ROW_HEIGHT;
             match line {
                 Line::Note(note) => {
-                    text.draw_centered(note, center_x, baseline, text::SMALL, NOTE_COLOR)
+                    text.draw_centered(note, center_x, baseline, text::MEDIUM, NOTE_COLOR)
                 }
                 Line::Row {
                     rank,
@@ -180,7 +180,7 @@ impl Board {
                     &format!("You: #{rank}"),
                     center_x,
                     baseline,
-                    text::SMALL,
+                    text::MEDIUM,
                     MINE_COLOR,
                 ),
             }
@@ -189,8 +189,8 @@ impl Board {
 }
 
 fn draw_right(text: &Text, s: &str, right: f32, baseline: f32, color: Color) {
-    let width = text.measure(s, text::SMALL).width;
-    text.draw(s, right - width, baseline, text::SMALL, color);
+    let width = text.measure(s, text::MEDIUM).width;
+    text.draw(s, right - width, baseline, text::MEDIUM, color);
 }
 
 /// 表の中身。見出しの下に並べる順。

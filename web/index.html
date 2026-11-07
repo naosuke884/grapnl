@@ -292,6 +292,27 @@
                     lost = false;
                     return result ? 1 : 0;
                 };
+                // 端末に覚えておく設定（src/page.rs）。キーは grapnl. を付けて置き、0 以上の整数だけを扱う。
+                // 無いときや localStorage が使えないときは -1 を返す。
+                function key(ptr, len) {
+                    return "grapnl." + new TextDecoder().decode(new Uint8Array(wasm_memory.buffer, ptr, len));
+                }
+                importObject.env.page_storage_read = function (ptr, len) {
+                    try {
+                        var raw = localStorage.getItem(key(ptr, len));
+                        var value = Number(raw);
+                        return raw !== null && Number.isSafeInteger(value) && value >= 0 && value <= 2147483647 ? value : -1;
+                    } catch (e) {
+                        return -1;
+                    }
+                };
+                importObject.env.page_storage_write = function (ptr, len, value) {
+                    try {
+                        localStorage.setItem(key(ptr, len), String(value));
+                    } catch (e) {
+                        // 覚えられなくても遊べる。
+                    }
+                };
             }
             miniquad_add_plugin({ register_plugin: register_plugin, name: "grapnl_page", version: 1 });
         })();

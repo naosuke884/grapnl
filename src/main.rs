@@ -15,6 +15,7 @@ mod shadow;
 mod shake;
 mod text;
 mod view;
+mod volume;
 
 use macroquad::prelude::*;
 
@@ -26,6 +27,7 @@ use shadow::{Shadows, State};
 use shake::Shake;
 use text::Text;
 use view::Playfield;
+use volume::Volume;
 
 /// 更新は固定の刻みで回し、画面のリフレッシュレートで手触りが変わらないようにする。
 const FIXED_DT: f32 = 1.0 / 120.0;
@@ -69,6 +71,7 @@ async fn main() {
     // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
     let mut hit_stop = HitStop::default();
     let mut pause = Pause::default();
+    let mut volume = Volume::load();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -84,15 +87,31 @@ async fn main() {
         boost_pressed |= right_click;
         // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。
         let screen = playfield.rect.size();
+        // 一時停止の画面の音量の操作。画面の文字と同じ座標で、ポインターがどれに乗っているかを見る。
+        let volume_panel = volume_panel(screen);
+        let pointer = Vec2::from(mouse_position()) - playfield.rect.point();
+        let hovered = if pause.paused() {
+            volume_panel.control_at(pointer)
+        } else {
+            None
+        };
+        // 音量の囲みの中のクリックでは再開しない。
+        let on_volume_panel = pause.paused() && volume_panel.frame().contains(pointer);
         // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
         match pause.update(
             game.over,
             is_key_pressed(KeyCode::Escape),
-            left_click || right_click,
+            (left_click || right_click) && !on_volume_panel,
             page::lost_focus(),
         ) {
             pause::Frame::Running => {}
             pause::Frame::Paused => {
+                volume.update(
+                    is_key_pressed(KeyCode::Left),
+                    is_key_pressed(KeyCode::Right),
+                    is_key_pressed(KeyCode::M),
+                    hovered.filter(|_| left_click),
+                );
                 // 止まっている間に押した入力は、再開した後に使わない。
                 wire_pressed = false;
                 boost_pressed = false;
@@ -133,7 +152,7 @@ async fn main() {
                 };
                 game.step(input, FIXED_DT);
                 for event in &game.events {
-                    sfx.play(event);
+                    sfx.play(event, volume.gain());
                     shake.kick(event);
                     hit_stop.kick(event);
                 }
@@ -243,6 +262,7 @@ async fn main() {
         }
         if pause.paused() {
             draw_paused(&text, screen);
+            volume_panel.draw(&text, &volume, hovered);
         }
         if game.over {
             draw_game_over(&text, &game, since_over, &best, screen);
@@ -284,6 +304,11 @@ fn draw_paused(text: &Text, screen: Vec2) {
         24.0,
         Color::from_rgba(180, 190, 205, 255),
     );
+}
+
+/// 一時停止の画面で、音量の操作を「Esc かクリックで再開」の下に置く。
+fn volume_panel(screen: Vec2) -> volume::Panel {
+    volume::Panel::new(screen.x / 2.0, screen.y / 2.0 + 84.0)
 }
 
 /// 自己ベストの表示。まだ無いとき（初めて遊ぶ前やデータを消した後）は「なし」と出し、0 点と見分ける。

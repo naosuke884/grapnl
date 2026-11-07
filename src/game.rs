@@ -198,13 +198,9 @@ impl Game {
         );
         self.level.draw();
         self.enemies.draw();
-        // ワイヤーを持っていないときは、今撃てば刺さる点（敵が手前なら敵）に照準を出す。
-        if self.player.anchor.is_none() {
-            let target = match self.enemy_target(self.aim) {
-                Some((_, point)) => Some(point),
-                None => self.player.wire_target(self.aim, &self.level),
-            };
-            if let Some(target) = target {
+        // ワイヤーを持っていないときは照準を出す。刺さる点があればそこ、届かなければ伸び切る位置。
+        match self.aim_mark() {
+            Some(AimMark::Hit(target)) => {
                 draw_circle_lines(
                     target.x,
                     target.y,
@@ -213,9 +209,62 @@ impl Game {
                     Color::from_rgba(255, 200, 80, 180),
                 );
             }
+            Some(AimMark::OutOfReach(point)) => draw_unreachable_mark(point),
+            None => {}
         }
         self.player.draw();
     }
+
+    /// 照準に出す印。刺さっている間、またはカーソルが自機の上で向きが決まらないときは出さない。
+    fn aim_mark(&self) -> Option<AimMark> {
+        if self.player.anchor.is_some() {
+            return None;
+        }
+        let origin = self.player.position;
+        let dir = (self.aim - origin).normalize_or_zero();
+        if dir == Vec2::ZERO {
+            return None;
+        }
+        if let Some((_, point)) = self.enemy_target(self.aim) {
+            return Some(AimMark::Hit(point));
+        }
+        if let Some(point) = self.player.wire_target(self.aim, &self.level) {
+            return Some(AimMark::Hit(point));
+        }
+        Some(AimMark::OutOfReach(origin + dir * MAX_WIRE_LENGTH))
+    }
+}
+
+/// ワイヤーを持っていないときの照準。
+#[derive(Debug)]
+enum AimMark {
+    /// 今撃てば刺さる点。敵が地形より手前にいるときは、その敵に当たる点。
+    Hit(Vec2),
+    /// その向きには届かない。位置はワイヤーが伸び切る点。
+    OutOfReach(Vec2),
+}
+
+/// 届かない向きの印。刺さるときの円より大きくし、画面を引いていてもバツだと分かるようにする。
+fn draw_unreachable_mark(point: Vec2) {
+    let color = Color::from_rgba(230, 110, 120, 220);
+    draw_circle_lines(point.x, point.y, 28.0, 5.0, color);
+    let arm = 18.0;
+    draw_line(
+        point.x - arm,
+        point.y - arm,
+        point.x + arm,
+        point.y + arm,
+        5.0,
+        color,
+    );
+    draw_line(
+        point.x - arm,
+        point.y + arm,
+        point.x + arm,
+        point.y - arm,
+        5.0,
+        color,
+    );
 }
 
 /// コース生成の版。地形か敵の作り方を変えたら上げる。
@@ -235,7 +284,7 @@ pub fn room_key(seed: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enemy::Enemy;
+    use crate::enemy::{Enemy, ENEMY_RADIUS};
 
     const DT: f32 = 1.0 / 120.0;
 
@@ -328,6 +377,113 @@ mod tests {
         while !game.player.can_shoot() {
             game.step(WireInput::default(), DT);
         }
+    }
+
+    /// ワイヤーを持っていない状態。敵は照準のテストに邪魔なので空にする。
+    fn hanging_free() -> Game {
+        let mut game = Game::with_seed(1);
+        release_wire(&mut game);
+        game.enemies.list.clear();
+        game
+    }
+
+    fn expect_hit(game: &Game) -> Vec2 {
+        match game.aim_mark() {
+            Some(AimMark::Hit(point)) => point,
+            other => panic!("刺さる印のはずだった: {other:?}"),
+        }
+    }
+
+    fn expect_miss(game: &Game) -> Vec2 {
+        match game.aim_mark() {
+            Some(AimMark::OutOfReach(point)) => point,
+            other => panic!("届かない印のはずだった: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn aim_shows_where_the_wire_would_stick() {
+        let mut game = hanging_free();
+        // 平らな天井の真下。真上へ狙うと、天井の下面に刺さる。
+        game.player.position = vec2(300.0, 800.0);
+        game.aim = game.player.position + vec2(0.0, -1.0);
+        assert_eq!(expect_hit(&game), vec2(300.0, 120.0));
+    }
+
+    #[test]
+    fn aim_shows_out_of_reach_at_the_end_of_the_wire() {
+        let mut game = hanging_free();
+        // 地形はすべてこの高さより上にあるので、下へ狙うと何にも届かない。
+        game.player.position = vec2(300.0, 800.0);
+        game.aim = game.player.position + vec2(0.0, 40.0);
+        assert_eq!(
+            expect_miss(&game),
+            game.player.position + vec2(0.0, MAX_WIRE_LENGTH)
+        );
+    }
+
+    #[test]
+    fn aim_follows_the_cursor_when_nothing_is_in_reach() {
+        let mut game = hanging_free();
+        game.player.position = vec2(300.0, 800.0);
+        // 右下。この高さより下に地形はない。
+        let dir = vec2(3.0, 4.0).normalize();
+        game.aim = game.player.position + dir * 10.0;
+        let point = expect_miss(&game);
+        let expected = game.player.position + dir * MAX_WIRE_LENGTH;
+        assert!((point - expected).length() < 1e-3, "{point} と {expected}");
+    }
+
+    #[test]
+    fn aim_is_out_of_reach_when_the_ceiling_is_farther_than_the_wire() {
+        let mut game = hanging_free();
+        game.player.position = vec2(300.0, 120.0 + MAX_WIRE_LENGTH + 40.0);
+        game.aim = game.player.position + vec2(0.0, -1.0);
+        assert_eq!(
+            expect_miss(&game),
+            game.player.position + vec2(0.0, -MAX_WIRE_LENGTH)
+        );
+    }
+
+    #[test]
+    fn aim_hits_an_enemy_in_front_of_the_ceiling() {
+        let mut game = hanging_free();
+        game.player.position = vec2(300.0, 800.0);
+        let enemy_at = game.player.position + vec2(0.0, -250.0);
+        game.enemies.list.push(Enemy::new(enemy_at, 0.0));
+        game.aim = game.player.position + vec2(0.0, -1.0);
+        // 下から当たるので、敵の下面。
+        assert_eq!(expect_hit(&game), enemy_at + vec2(0.0, ENEMY_RADIUS));
+    }
+
+    #[test]
+    fn aim_ignores_enemies_beyond_the_wire() {
+        let mut game = hanging_free();
+        game.player.position = vec2(300.0, 800.0);
+        game.enemies.list.push(Enemy::new(
+            game.player.position + vec2(0.0, MAX_WIRE_LENGTH + 80.0),
+            0.0,
+        ));
+        game.aim = game.player.position + vec2(0.0, 1.0);
+        assert_eq!(
+            expect_miss(&game),
+            game.player.position + vec2(0.0, MAX_WIRE_LENGTH)
+        );
+    }
+
+    #[test]
+    fn aim_hides_while_the_wire_is_attached() {
+        let mut game = Game::with_seed(1);
+        assert!(game.player.anchor.is_some());
+        game.aim = game.player.position + vec2(0.0, 1.0);
+        assert!(game.aim_mark().is_none());
+    }
+
+    #[test]
+    fn aim_hides_when_the_cursor_is_on_the_player() {
+        let mut game = hanging_free();
+        game.aim = game.player.position;
+        assert!(game.aim_mark().is_none());
     }
 
     #[test]

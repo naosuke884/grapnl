@@ -1,14 +1,39 @@
 use macroquad::prelude::*;
 
-/// 画面の日本語を描くドットフォント。DotGothic16（SIL OFL 1.1、assets/fonts/OFL.txt）を、
-/// src/ の文字列リテラルで使う文字だけに絞ったもの。文字を足したら scripts/subset-font.py を実行し直す。
-const FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/DotGothic16-Regular-subset.ttf");
-/// 画面の文字の大きさ。DotGothic16 は 16 ピクセルで作られているので、ドットが滲まないよう 16 の倍数だけを使う。
-pub const SMALL: f32 = 16.0;
-pub const MEDIUM: f32 = 32.0;
-pub const LARGE: f32 = 48.0;
-/// 遊んでいる途中で文字の画像を作ってカクつかないよう、始める前に作っておく大きさ。
-const SIZES: [u16; 3] = [SMALL as u16, MEDIUM as u16, LARGE as u16];
+/// 画面の文字のフォント。どれも SIL OFL 1.1（assets/fonts/OFL-*.txt）。scripts/subset-font.py が置く。
+/// 見出し: Press Start 2P。スコア・GAME OVER・ボタンなど目立たせる所。8 ピクセルで作られている。
+const HEADING_BYTES: &[u8] = include_bytes!("../assets/fonts/PressStart2P-Regular.ttf");
+/// 本文: Pixelify Sans の Regular を、src/ の文字列リテラルで使う文字だけに絞ったもの。説明やランキングなど読ませる所。
+const BODY_BYTES: &[u8] = include_bytes!("../assets/fonts/PixelifySans-subset.ttf");
+/// 日本語: DotGothic16 を絞ったもの。上の 2 つで描けない文字と「名無し#1a2b」の名前に使う。16 ピクセルで作られている。
+const JAPANESE_BYTES: &[u8] = include_bytes!("../assets/fonts/DotGothic16-Regular-subset.ttf");
+
+/// 本文の文字の大きさ。Pixelify Sans はドット 1 つが 1 em の約 1/11 なので、ドットが滲まないよう 11 の倍数を使う。
+pub const SMALL: f32 = 22.0;
+pub const MEDIUM: f32 = 33.0;
+pub const LARGE: f32 = 44.0;
+/// 見出しの文字の大きさ。Press Start 2P は 8 ピクセルで作られているので、ドットが滲まないよう 8 の倍数だけを使う。
+pub const HEAD_SMALL: f32 = 16.0;
+pub const HEAD_MEDIUM: f32 = 24.0;
+pub const HEAD_LARGE: f32 = 48.0;
+
+/// 画面の文字の 3 つのフォント。
+pub struct Fonts {
+    pub heading: Text,
+    pub body: Text,
+    pub japanese: Text,
+}
+
+impl Fonts {
+    /// 遊んでいる途中で文字の画像を作ってカクつかないよう、使う大きさの画像を始める前に作っておく。
+    pub fn load() -> Self {
+        Self {
+            heading: Text::embedded(HEADING_BYTES, &[HEAD_SMALL, HEAD_MEDIUM, HEAD_LARGE]),
+            body: Text::embedded(BODY_BYTES, &[SMALL, MEDIUM, LARGE]),
+            japanese: Text::embedded(JAPANESE_BYTES, &[SMALL, MEDIUM]),
+        }
+    }
+}
 
 /// 画面の文字を描く。macroquad の既定のフォントは日本語を描けないので、すべての文字はこれで描く。
 pub struct Text {
@@ -18,13 +43,15 @@ pub struct Text {
 }
 
 impl Text {
-    pub fn load() -> Self {
-        let mut font = load_ttf_font_from_bytes(FONT_BYTES).expect("同梱のフォントを読めない");
+    fn embedded(bytes: &[u8], sizes: &[f32]) -> Self {
+        let mut font = load_ttf_font_from_bytes(bytes).expect("同梱のフォントを読めない");
         // 高 DPI の画面で拡大されても、ドットが滲まないようにする。
         font.set_filter(FilterMode::Nearest);
-        let chars = font_chars(FONT_BYTES);
-        for size in SIZES {
-            font.populate_font_cache(&chars, size);
+        let chars = font_chars(bytes);
+        // 見出しのフォントは絞っていないので、画像は ASCII の分だけ先に作る。ほかの文字は描くときに作る。
+        let cached: Vec<char> = chars.iter().copied().filter(|c| c.is_ascii()).collect();
+        for &size in sizes {
+            font.populate_font_cache(&cached, size as u16);
         }
         Self { font, chars }
     }
@@ -111,7 +138,7 @@ impl Text {
 
 impl Text {
     /// 画面のピクセルではなくカメラの座標で、`center` が文字の中心になるように描く。
-    /// 文字の画像は `raster`（`SIZES` のどれか）の大きさで作り、`scale` 倍して描く。
+    /// 文字の画像は `raster`（`Fonts::load` で作っておく大きさのどれか）の大きさで作り、`scale` 倍して描く。
     /// ワールド座標のカメラの下では、`scale` に画面の 1 ピクセルに映るワールドの幅を掛けて渡す。
     pub fn draw_scaled_centered(
         &self,
@@ -262,15 +289,16 @@ mod tests {
 
     #[test]
     fn font_has_every_character_in_string_literals() {
-        let face = ttf_parser::Face::parse(FONT_BYTES, 0).unwrap();
+        let faces = [HEADING_BYTES, BODY_BYTES, JAPANESE_BYTES]
+            .map(|bytes| ttf_parser::Face::parse(bytes, 0).unwrap());
         for (name, source) in SOURCES {
             for c in literal_chars(without_tests(source)) {
                 if c.is_control() {
                     continue;
                 }
                 assert!(
-                    face.glyph_index(c).is_some(),
-                    "{name} の {c:?} がフォントに無い。scripts/subset-font.py を実行し直す"
+                    faces.iter().any(|face| face.glyph_index(c).is_some()),
+                    "{name} の {c:?} がどのフォントにも無い。scripts/subset-font.py を実行し直す"
                 );
             }
         }

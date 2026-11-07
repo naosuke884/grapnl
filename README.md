@@ -56,7 +56,7 @@ cargo run
 
 画面の文字は英語で、`src/text.rs` の `Text` で描きます。ランキングの名前には日本語も出るので、macroquad の既定のフォントの `draw_text` は使いません。データを消すダイアログも英語です（名前の入力欄は roommate-sdk が出すので日本語のまま）。
 
-フォントはドットフォントの [DotGothic16](https://fonts.google.com/specimen/DotGothic16)（SIL OFL 1.1、`assets/fonts/OFL.txt`）を、`src/` の文字列リテラルで使う文字だけに絞って `assets/fonts/DotGothic16-Regular-subset.ttf` に置き、wasm に埋め込んでいます。16 ピクセルで作られたフォントなので、ドットが滲まないよう文字の大きさは 16・32・48（`text::SMALL`・`MEDIUM`・`LARGE`）だけを使います。文字列に新しい文字を足したら、絞り直します。
+フォントはドットフォントを 3 つ使い分けます（どれも SIL OFL 1.1、`assets/fonts/OFL-*.txt`）。見出し・スコア・ボタン・ランキングの数字と英数字の名前は [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P)（8 の倍数の大きさ。名前を予約しているので絞らずに置く）、説明などの本文は [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans) の Regular（11 の倍数の大きさ）、日本語の名前は [DotGothic16](https://fonts.google.com/specimen/DotGothic16) です。本文と日本語は `src/` の文字列リテラルで使う文字（と「名無し#1a2b」の文字）だけに絞って `assets/fonts/` に置き、wasm に埋め込んでいます。文字列に新しい文字を足したら、絞り直します。
 
 ```sh
 pip install fonttools

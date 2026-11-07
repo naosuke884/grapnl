@@ -7,12 +7,14 @@ use macroquad::prelude::*;
 use roommate_sdk::{Ranking, RankingStatus};
 
 use crate::names::NameFont;
-use crate::text::{self, Text};
+use crate::text::{self, Fonts, Text};
 
 /// 上位から出す行数の上限。画面が低いときはこれより減らす。
 pub const MAX_ROWS: usize = 5;
 /// 1 行の高さ。文字は `text::MEDIUM` の大きさで描く。
 pub const ROW_HEIGHT: f32 = 40.0;
+/// 見出しのフォントの数字は本文より下端が高く見えるので、少し下げて行の文字とそろえる。
+const HEADING_DROP: f32 = 2.0;
 /// 表の横幅。順位・名前・スコアを並べる。
 pub const WIDTH: f32 = 640.0;
 /// 順位の列の右端（表の左端から）。
@@ -66,7 +68,7 @@ impl Board {
 
     /// 毎フレーム呼ぶ。読み終えたら手元に持ち、それ以降は roommate-sdk に聞かない。
     /// 名前を `names` に見せ、描けない名前があれば名前用のフォントを読み始めさせる。
-    pub fn update(&mut self, text: &Text, names: &mut NameFont) {
+    pub fn update(&mut self, fonts: &Fonts, names: &mut NameFont) {
         if self.status == RankingStatus::Loading {
             match roommate_sdk::ranking() {
                 // 頼んだ直後に頼んでいないことになるのは、データを消したときなど。読み込み中のままにはしない。
@@ -76,7 +78,7 @@ impl Board {
         }
         if let RankingStatus::Ready(ranking) = &self.status {
             for entry in &ranking.entries {
-                names.want(text, &entry.name);
+                names.want(fonts, &entry.name);
             }
         }
     }
@@ -93,7 +95,8 @@ impl Board {
     }
 
     /// `top` を見出しの上端にして、`center_x` を中心に描く。上位は `rows` 行まで出す。
-    pub fn draw(&self, text: &Text, names: &NameFont, center_x: f32, top: f32, rows: usize) {
+    pub fn draw(&self, fonts: &Fonts, names: &NameFont, center_x: f32, top: f32, rows: usize) {
+        let text = &fonts.body;
         let left = center_x - WIDTH / 2.0;
         let mut baseline = top + ROW_HEIGHT - 8.0;
         text.draw_centered(
@@ -116,16 +119,29 @@ impl Board {
                     mine,
                 } => {
                     let color = if mine { MINE_COLOR } else { ROW_COLOR };
+                    // 順位とスコアの数字は、見分けやすい見出しのフォントで描く。
                     draw_right(
-                        text,
+                        &fonts.heading,
                         &format!("#{rank}"),
                         left + RANK_RIGHT,
-                        baseline,
+                        baseline + HEADING_DROP,
                         color,
                     );
-                    let (font, name) = names.pick(text, &name);
-                    font.draw(&name, left + NAME_LEFT, baseline, text::MEDIUM, color);
-                    draw_right(text, &score.to_string(), left + WIDTH, baseline, color);
+                    let (font, name, size) =
+                        names.pick(fonts, &name, text::HEAD_MEDIUM, text::MEDIUM);
+                    let drop = if size == text::HEAD_MEDIUM {
+                        HEADING_DROP
+                    } else {
+                        0.0
+                    };
+                    font.draw(&name, left + NAME_LEFT, baseline + drop, size, color);
+                    draw_right(
+                        &fonts.heading,
+                        &score.to_string(),
+                        left + WIDTH,
+                        baseline + HEADING_DROP,
+                        color,
+                    );
                 }
                 Line::Mine(rank) => text.draw_centered(
                     &format!("You: #{rank}"),
@@ -139,9 +155,9 @@ impl Board {
     }
 }
 
-fn draw_right(text: &Text, s: &str, right: f32, baseline: f32, color: Color) {
-    let width = text.measure(s, text::MEDIUM).width;
-    text.draw(s, right - width, baseline, text::MEDIUM, color);
+fn draw_right(heading: &Text, s: &str, right: f32, baseline: f32, color: Color) {
+    let width = heading.measure(s, text::HEAD_MEDIUM).width;
+    heading.draw(s, right - width, baseline, text::HEAD_MEDIUM, color);
 }
 
 /// 表の中身。見出しの下に並べる順。

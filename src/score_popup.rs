@@ -27,7 +27,7 @@ const POP_SCALE: f32 = 1.35;
 const BASE_SIZE: f32 = 30.0;
 const SIZE_STEP: f32 = 7.0;
 /// 文字の画像を作る大きさ。ドットフォントの元の大きさで作り、ドットのまま拡大して描く。
-const RASTER: u16 = text::SMALL as u16;
+const RASTER: u16 = text::HEAD_SMALL as u16;
 
 /// 倍率ごとの文字。`KILL_POINTS × 倍率`。毎フレーム `format!` しないよう、決まった文字列を使う。
 const LABELS: [&str; MAX_MULTIPLIER as usize] = ["+100", "+200", "+300", "+400", "+500"];

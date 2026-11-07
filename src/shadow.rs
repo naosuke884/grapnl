@@ -8,7 +8,7 @@ use macroquad::prelude::*;
 
 use crate::names::NameFont;
 use crate::sprites::{draw_dot_line, draw_sprite, Sprites};
-use crate::text::{self, Text};
+use crate::text::{self, Fonts};
 
 use crate::game::FALL_LIMIT_Y;
 use crate::player::{Player, MAX_WIRE_LENGTH, PLAYER_RADIUS};
@@ -264,7 +264,7 @@ impl Shadows {
         &self,
         now: f64,
         sprites: &Sprites,
-        text: &Text,
+        fonts: &Fonts,
         names: &NameFont,
         world_per_pixel: f32,
     ) {
@@ -278,8 +278,7 @@ impl Shadows {
             draw_sprite(&sprites.player, position, color);
             // 名前は影の上に、画面で同じ大きさに見えるよう出す。
             if let Some(name) = self.names.get(&id) {
-                let (font, name) = names.pick(text, name);
-                let size = text::SMALL;
+                let (font, name, size) = names.pick(fonts, name, text::HEAD_SMALL, text::SMALL);
                 let above = position - vec2(0.0, PLAYER_RADIUS + size * 0.9 * world_per_pixel);
                 font.draw_scaled_centered(&name, above, size as u16, world_per_pixel, label_color);
             }

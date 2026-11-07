@@ -31,7 +31,7 @@ use player::WireInput;
 use ranking::Board;
 use shadow::{Shadows, State};
 use shake::Shake;
-use text::Text;
+use text::{Fonts, Text};
 use view::Playfield;
 use volume::Volume;
 
@@ -59,7 +59,9 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let text = Text::load();
+    let fonts = text::Fonts::load();
+    let text = &fonts.body;
+    let heading = &fonts.heading;
     let sprites = sprites::Sprites::load();
     // 音は始まる前に全部読み込む。
     let sfx = sfx::Sfx::load().await;
@@ -203,9 +205,9 @@ async fn main() {
         // 自己ベストは roommate-sdk が持つ。開いた後にサーバーの値が届くと下がることもあり、
         // データを消すと無くなるので、手元で大きいほうを覚えず毎フレームそのまま読む。
         let best = best_label(roommate_sdk::best_score());
-        board.update(&text, &mut name_font);
+        board.update(&fonts, &mut name_font);
         for name in shadows.names() {
-            name_font.want(&text, name);
+            name_font.want(&fonts, name);
         }
         name_font.update();
         bgm.update(volume.gain());
@@ -244,17 +246,17 @@ async fn main() {
         shadows.draw(
             now,
             &sprites,
-            &text,
+            &fonts,
             &name_font,
             game::VIEW_HEIGHT / screen_height(),
         );
-        game.draw(&text, &sprites);
+        game.draw(heading, &sprites);
 
         set_default_camera();
         // ワールドを映す範囲の外は黒く塗り、横長の画面でも先が見える幅を変えない。
         playfield.draw_bars();
         set_camera(&playfield.hud_camera());
-        text.draw(
+        heading.draw(
             &format!(
                 "Score {}   {:.0} m   Kills {}",
                 game.score(),
@@ -262,36 +264,36 @@ async fn main() {
                 game.kills
             ),
             16.0,
-            32.0,
-            text::MEDIUM,
+            36.0,
+            text::HEAD_MEDIUM,
             Color::from_rgba(180, 190, 205, 255),
         );
         text.draw(
             &best,
             16.0,
-            60.0,
+            64.0,
             text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
         // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開き方だけを右上に小さく出す。
         if !game.over && !pause.paused() {
             let hint = "Esc  Menu";
-            let width = text.measure(hint, text::SMALL).width;
-            text.draw(
+            let width = heading.measure(hint, text::HEAD_SMALL).width;
+            heading.draw(
                 hint,
                 screen.x - 16.0 - width,
                 32.0,
-                text::SMALL,
+                text::HEAD_SMALL,
                 Color::from_rgba(150, 160, 175, 200),
             );
         }
         if pause.paused() {
-            draw_paused(&text, screen, pointer);
+            draw_paused(&fonts, screen, pointer);
             volume_panel.draw(&sprites, &volume, hovered);
         }
         if game.over {
             draw_game_over(
-                &text, &name_font, &game, &board, since_over, new_best, &best, pointer, screen,
+                &fonts, &name_font, &game, &board, since_over, new_best, &best, pointer, screen,
             );
         }
 
@@ -332,7 +334,7 @@ const PAUSE_PANEL_GAP: f32 = 24.0;
 const PAUSE_VOLUME_KEYS: f32 = 28.0;
 /// 音量のキーの案内のベースラインから、メニューのボタンの上端まで。
 const PAUSE_MENU_GAP: f32 = 24.0;
-const MENU_BUTTON: Vec2 = vec2(200.0, 44.0);
+const MENU_BUTTON: Vec2 = vec2(248.0, 44.0);
 const MENU_GAP: f32 = 16.0;
 /// メニューのボタンの下端から、再開の案内のベースラインまで。
 const PAUSE_RESUME: f32 = 48.0;
@@ -442,7 +444,8 @@ fn run_menu_item(item: MenuItem) {
 }
 
 /// メニューのボタンを描く。データを消した後は、名前と消すボタンの代わりにそのことを知らせる。
-fn draw_menu(text: &Text, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
+fn draw_menu(fonts: &Fonts, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
+    let text = &fonts.body;
     let deleted = page::data_deleted();
     for &(item, rect) in menu {
         if deleted && item != MenuItem::BackToSite {
@@ -462,7 +465,9 @@ fn draw_menu(text: &Text, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
         };
         draw_rectangle(rect.x, rect.y, rect.w, rect.h, fill);
         draw_rectangle_lines(rect.x, rect.y, rect.w, rect.h, 2.0, border);
-        text.draw_y_centered_middle(item.label(), rect.center(), text::SMALL, WHITE);
+        fonts
+            .heading
+            .draw_y_centered_middle(item.label(), rect.center(), text::HEAD_SMALL, WHITE);
     }
     if deleted {
         let first = menu[0].1;
@@ -477,11 +482,13 @@ fn draw_menu(text: &Text, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
     }
 }
 
-fn draw_paused(text: &Text, screen: Vec2, pointer: Vec2) {
+fn draw_paused(fonts: &Fonts, screen: Vec2, pointer: Vec2) {
+    let text = &fonts.body;
+    let heading = &fonts.heading;
     draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
     let layout = pause_layout(screen);
     let center_x = screen.x / 2.0;
-    text.draw_centered("PAUSED", center_x, layout.title, text::LARGE, WHITE);
+    heading.draw_centered("PAUSED", center_x, layout.title, text::HEAD_LARGE, WHITE);
 
     let area = layout.controls;
     draw_rectangle(
@@ -491,11 +498,11 @@ fn draw_paused(text: &Text, screen: Vec2, pointer: Vec2) {
         area.h,
         Color::from_rgba(20, 24, 32, 230),
     );
-    text.draw_centered(
+    heading.draw_centered(
         "HOW TO PLAY",
         center_x,
         area.y + CONTROLS_PAD.y + CONTROLS_HEADING - 10.0,
-        text::SMALL,
+        text::HEAD_SMALL,
         Color::from_rgba(150, 200, 235, 255),
     );
     // キーは右揃え、働きは左揃えにして、表の中で向かい合わせる。列の境目は一番長いキーで決める。
@@ -524,15 +531,15 @@ fn draw_paused(text: &Text, screen: Vec2, pointer: Vec2) {
         );
     }
 
-    text.draw_centered(
+    heading.draw_centered(
         "← →  Volume     M  Mute",
         center_x,
         layout.volume_keys,
-        text::SMALL,
+        text::HEAD_SMALL,
         Color::from_rgba(150, 160, 175, 255),
     );
     // データを消した後は、名前も消すものも無いので、そのことだけ知らせてサイトへ戻るボタンを残す。
-    draw_menu(text, &layout.menu, pointer);
+    draw_menu(fonts, &layout.menu, pointer);
     text.draw_centered(
         "Click or Esc to resume",
         center_x,
@@ -562,14 +569,14 @@ const OVER_SCORE: f32 = 48.0;
 /// 自己ベストの行。更新したときは「NEW BEST!」を大きく出す。
 const OVER_BEST: f32 = 40.0;
 /// 自己ベストの行のベースラインから、ランキングの見出しの上端まで。
-const OVER_RANKING_GAP: f32 = 44.0;
+const OVER_RANKING_GAP: f32 = 36.0;
 /// ランキングの囲みの、表の外の余白。
 const RANKING_PAD: Vec2 = vec2(40.0, 22.0);
 /// ランキングの表の下端から、「Retry」ボタンの上端まで。
-const OVER_RETRY_GAP: f32 = 48.0;
+const OVER_RETRY_GAP: f32 = 36.0;
 const RETRY_SIZE: Vec2 = vec2(200.0, 52.0);
 /// 「Retry」ボタンの下端から、メニューのボタンの上端まで。
-const OVER_MENU_GAP: f32 = 24.0;
+const OVER_MENU_GAP: f32 = 16.0;
 /// 画面の上下に残す余白。
 const OVER_MARGIN: f32 = 16.0;
 
@@ -626,7 +633,7 @@ fn game_over_layout(screen: Vec2, board: &Board) -> GameOverLayout {
 
 #[allow(clippy::too_many_arguments)]
 fn draw_game_over(
-    text: &Text,
+    fonts: &Fonts,
     names: &names::NameFont,
     game: &Game,
     board: &Board,
@@ -636,11 +643,13 @@ fn draw_game_over(
     pointer: Vec2,
     screen: Vec2,
 ) {
+    let text = &fonts.body;
+    let heading = &fonts.heading;
     draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
     let center_x = screen.x / 2.0;
     let layout = game_over_layout(screen, board);
     let mut y = layout.top + OVER_TITLE;
-    text.draw_centered("GAME OVER", center_x, y, text::LARGE, WHITE);
+    heading.draw_centered("GAME OVER", center_x, y, text::HEAD_LARGE, WHITE);
     y += OVER_REASON;
     if let Some(reason) = game.end_reason {
         text.draw_centered(
@@ -669,7 +678,7 @@ fn draw_game_over(
         // 自己ベストを更新したときは、明るい黄色で明滅させて目立たせる。
         let pulse = (since_over * 6.0).sin() * 0.5 + 0.5;
         let color = Color::new(1.0, 0.85 + 0.15 * pulse, 0.3 + 0.5 * pulse, 1.0);
-        text.draw_centered("NEW BEST!", center_x, y, text::MEDIUM, color);
+        heading.draw_centered("NEW BEST!", center_x, y, text::HEAD_MEDIUM, color);
     } else {
         text.draw_centered(
             best,
@@ -689,9 +698,9 @@ fn draw_game_over(
         board.used_height(layout.rows) + pad.y * 2.0,
         Color::from_rgba(20, 24, 32, 230),
     );
-    board.draw(text, names, center_x, y, layout.rows);
-    draw_retry_button(text, layout.retry, since_over >= RETRY_DELAY, pointer);
-    draw_menu(text, &layout.menu, pointer);
+    board.draw(fonts, names, center_x, y, layout.rows);
+    draw_retry_button(heading, layout.retry, since_over >= RETRY_DELAY, pointer);
+    draw_menu(fonts, &layout.menu, pointer);
 }
 
 /// 「Retry」ボタン。終わった直後の `RETRY_DELAY` の間は暗くして、押せないことを見せる。
@@ -711,7 +720,7 @@ fn draw_retry_button(text: &Text, rect: Rect, ready: bool, pointer: Vec2) {
     } else {
         Color::from_rgba(120, 126, 140, 255)
     };
-    text.draw_y_centered_middle("Retry", rect.center(), text::MEDIUM, color);
+    text.draw_y_centered_middle("Retry", rect.center(), text::HEAD_MEDIUM, color);
 }
 
 #[cfg(test)]

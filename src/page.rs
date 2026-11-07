@@ -10,7 +10,6 @@ extern "C" {
     fn page_storage_write(key: *const u8, key_len: usize, value: i32);
     fn page_open_delete_dialog();
     fn page_go_to_site();
-    fn page_data_deleted() -> i32;
 }
 
 /// 前に呼んでからタブを離れたかフォーカスが外れたか、今もタブが隠れているか。
@@ -66,17 +65,5 @@ pub fn go_to_site() {
     #[cfg(target_arch = "wasm32")]
     unsafe {
         page_go_to_site()
-    }
-}
-
-/// 自分のデータを消し終えたか。消した後は、ページを開き直すまでスコアを記録しない。
-pub fn data_deleted() -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        unsafe { page_data_deleted() != 0 }
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        false
     }
 }

@@ -428,9 +428,7 @@ fn menu_row(center_x: f32, top: f32) -> [(MenuItem, Rect); 3] {
 
 /// `pointer` が乗っているメニューのボタン。
 fn menu_item_at(menu: &[(MenuItem, Rect); 3], pointer: Vec2) -> Option<MenuItem> {
-    let deleted = page::data_deleted();
     menu.iter()
-        .filter(|(item, _)| !deleted || *item == MenuItem::BackToSite)
         .find(|(_, rect)| rect.contains(pointer))
         .map(|(item, _)| *item)
 }
@@ -443,14 +441,9 @@ fn run_menu_item(item: MenuItem) {
     }
 }
 
-/// メニューのボタンを描く。データを消した後は、名前と消すボタンの代わりにそのことを知らせる。
+/// メニューのボタンを描く。
 fn draw_menu(fonts: &Fonts, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
-    let text = &fonts.body;
-    let deleted = page::data_deleted();
     for &(item, rect) in menu {
-        if deleted && item != MenuItem::BackToSite {
-            continue;
-        }
         let hovered = rect.contains(pointer);
         let (fill, border) = match (item, hovered) {
             (MenuItem::DeleteData, true) => (
@@ -468,17 +461,6 @@ fn draw_menu(fonts: &Fonts, menu: &[(MenuItem, Rect); 3], pointer: Vec2) {
         fonts
             .heading
             .draw_y_centered_middle(item.label(), rect.center(), text::HEAD_SMALL, WHITE);
-    }
-    if deleted {
-        let first = menu[0].1;
-        let second = menu[1].1;
-        text.draw_centered(
-            "Data deleted. Please reload the page.",
-            (first.x + second.right()) / 2.0,
-            first.center().y + 6.0,
-            text::SMALL,
-            Color::from_rgba(255, 204, 90, 255),
-        );
     }
 }
 

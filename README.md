@@ -76,10 +76,10 @@ python3 -m http.server 8080 --directory web
 
 `web/` が配信用の一式です。
 
-- `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。キャンバスで画面全体を埋める（ヘッダーは置かない）。サイトへ戻る・名前を変える・データを消すは一時停止の画面のボタンから page プラグイン（`page_go_to_site` / `roommate_sdk::open_name_dialog` / `page_open_delete_dialog`）を呼ぶ。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。「Change name」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
+- `index.html` — 説明と OGP はサイトのゲームページと同じにし、共有の行き先（canonical・og:url）もそこにする。キャンバスで画面全体を埋める（ヘッダーは置かない）。サイトへ戻る・名前を変える・データを消すは一時停止の画面のボタンから page プラグイン（`page_go_to_site` / `roommate_sdk::open_name_dialog` / `page_open_delete_dialog`）を呼ぶ。データを消す確認と結果は `<dialog>` で出し、`window.roommate.client` の `requestDelete()` / `deleteState()` を呼ぶ。消し終えたらページを開き直す。「Change name」は `window.roommate.openNameDialog()` で roommate-sdk の入力欄を開き、開いている間は `isNameDialogOpen()` を見て一時停止する
 - `mq_js_bundle.js` — macroquad 0.4.16 同梱の専用ローダー（`wasm-bindgen` ではない）
 - `roommate-sdk.js` — roommate-sdk。匿名 ID・名前の入力欄・スコアの送信・自己ベスト・データの削除を受け持つ。`Cargo.toml` の `roommate-sdk` と同じタグの `packages/roommate-sdk/dist/roommate-sdk.js` を置く
-- `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。部屋のサーバーが知らせる各人の表示名（「名前#1a2b」）も wasm へ渡し、影の上に出す。自分のデータを消した後は WebSocket を閉じ、ページを開き直すまで繋がない
+- `realtime.js` — 同じコースを同時に走っている人の影を出すため、roommate の API の部屋に WebSocket で繋ぐ。部屋のサーバーが知らせる各人の表示名（「名前#1a2b」）も wasm へ渡し、影の上に出す
 - `grapnl.wasm` — `./scripts/build-wasm.sh` が生成する（gitignore 済み）
 - `DotGothic16-Regular-names.ttf` — ランキングの名前を描く全文字のフォント（約 1.8 MB）。画面の文字だけに絞った同梱のフォントで描けない名前があったときだけ、ゲームが後から読み込む。`scripts/subset-font.py` が作る
 - `bgm.ogg` — BGM。`scripts/gen-bgm.py` で合成する。最初の読み込みを重くしないよう、ゲームが始まってから読み込む

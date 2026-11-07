@@ -257,10 +257,6 @@
                 importObject.env.page_go_to_site = function () {
                     window.location.href = "https://roommate.hayashi-naoki.com/games/grapnl/";
                 };
-                importObject.env.page_data_deleted = function () {
-                    var client = window.roommate && window.roommate.client;
-                    return client && client.deleteState && client.deleteState() === "done" ? 1 : 0;
-                };
                 importObject.env.page_storage_write = function (ptr, len, value) {
                     try {
                         localStorage.setItem(key(ptr, len), String(value));
@@ -299,13 +295,7 @@
                 deleteButton.textContent = state === "failed" ? "Try again" : "Delete";
             }
 
-            function showDone() {
-                // 消した ID のまま影の部屋に残らないよう、WebSocket を閉じる。
-                if (window.grapnlRealtime) window.grapnlRealtime.stop();
-            }
-
-            // 消し終えたら、消したことを少し見せてからページを開き直す。開き直すと新しい匿名 ID で始まり、
-            // スコアもまた記録される。開き直せなかったときは、一時停止の画面が page_data_deleted を見て知らせる。
+            // 消し終えたら、消したことを少し見せてからページを開き直す。開き直すと新しい匿名 ID で始まる。
             function reloadSoon() {
                 setTimeout(function () {
                     window.location.reload();
@@ -313,7 +303,7 @@
             }
 
             window.grapnlOpenDeleteDialog = function () {
-                if (dialog.open || client.deleteState() === "done") return;
+                if (dialog.open) return;
                 show("confirm");
                 dialog.showModal();
                 dialog.querySelector("[data-autofocus]").focus();
@@ -323,21 +313,17 @@
                 show("deleting");
                 client.requestDelete().then(function () {
                     var state = client.deleteState() === "done" ? "done" : "failed";
-                    if (state === "done") showDone();
                     if (dialog.open) show(state);
                     if (state === "done") reloadSoon();
                 });
             });
 
-            // 消している間に閉じても、消すのは続き、結果は一時停止の画面に出る。
+            // 消している間に閉じても、消すのは続き、消し終えたらページを開き直す。
             dialog.addEventListener("close", function () {
                 // 閉じた後のキー入力がゲームに届くよう、フォーカスをキャンバスへ戻す。
                 canvas.focus();
             });
-
-            if (client.deleteState() === "done") showDone();
         })();
-
 
         // ゲームの最初のフレームは gl.clear で画面を塗り始める。
         // clear の時点ではそのフレームの残りをまだ描いているので、

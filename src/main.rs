@@ -266,15 +266,7 @@ async fn main() {
         }
         if pause.paused() {
             draw_paused(&text, screen);
-            // 操作の説明は遊んでいる間は出さず、一時停止の画面の下にだけ出す。
-            text.draw(
-                "Left click: shoot / retract wire   Right click: boost   Esc: pause",
-                16.0,
-                screen.y - 16.0,
-                text::SMALL,
-                Color::from_rgba(180, 190, 205, 255),
-            );
-            volume_panel.draw(&text, &sprites, &volume, hovered);
+            volume_panel.draw(&sprites, &volume, hovered);
         }
         if game.over {
             draw_game_over(
@@ -292,22 +284,85 @@ fn retry_requested(since_over: f32, click: bool, key_r: bool, key_space: bool) -
     since_over >= RETRY_DELAY && (click || key_r || key_space)
 }
 
+/// 一時停止の画面の操作の説明。キーと、その働き。遊んでいる間は出さず、ここにだけ出す。
+const CONTROLS: [(&str, &str); 5] = [
+    ("Left click", "Shoot / retract the wire"),
+    ("Right click", "Boost"),
+    ("Esc", "Pause / resume"),
+    ("← →", "Volume"),
+    ("M", "Mute"),
+];
+const CONTROL_ROW: f32 = 28.0;
+/// 一時停止の画面の、上から並べる間隔。
+const PAUSE_TITLE: f32 = text::LARGE;
+const PAUSE_RESUME: f32 = 40.0;
+/// 「Click or Esc to resume」のベースラインから、音量の囲みの上端まで。
+const PAUSE_PANEL_GAP: f32 = 36.0;
+/// 音量の囲みの下端から、操作の説明の 1 行目のベースラインまで。
+const PAUSE_CONTROLS_GAP: f32 = 48.0;
+/// 背景を暗くする濃さ。後ろの画面の文字が読めて気が散らないくらいにする。
+const DIM: Color = Color::new(0.0, 0.0, 0.0, 0.72);
+
+/// 一時停止の画面の置き方。描くときと、音量の操作のクリックを見るときで同じものを使う。
+struct PauseLayout {
+    title: f32,
+    resume: f32,
+    panel: volume::Panel,
+    controls: f32,
+}
+
+fn pause_layout(screen: Vec2) -> PauseLayout {
+    let center_x = screen.x / 2.0;
+    // 音量の囲みの高さを知るため、いったん原点に置いて測る。
+    let panel_height = volume::Panel::new(0.0, 0.0).frame().h;
+    let height = PAUSE_TITLE
+        + PAUSE_RESUME
+        + PAUSE_PANEL_GAP
+        + panel_height
+        + PAUSE_CONTROLS_GAP
+        + CONTROL_ROW * (CONTROLS.len() - 1) as f32;
+    let top = ((screen.y - height) / 2.0).max(16.0);
+    let title = top + PAUSE_TITLE;
+    let resume = title + PAUSE_RESUME;
+    let panel = volume::Panel::new(0.0, 0.0);
+    // `Panel::new` の上端は枠の内側の行なので、枠の上端が `resume + PAUSE_PANEL_GAP` に来るようずらす。
+    let inset = -panel.frame().y;
+    let panel = volume::Panel::new(center_x, resume + PAUSE_PANEL_GAP + inset);
+    let controls = panel.frame().bottom() + PAUSE_CONTROLS_GAP;
+    PauseLayout {
+        title,
+        resume,
+        panel,
+        controls,
+    }
+}
+
 fn draw_paused(text: &Text, screen: Vec2) {
-    draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
-    let center = screen / 2.0;
-    text.draw_centered("PAUSED", center.x, center.y - 10.0, text::LARGE, WHITE);
+    draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
+    let layout = pause_layout(screen);
+    let center_x = screen.x / 2.0;
+    text.draw_centered("PAUSED", center_x, layout.title, text::LARGE, WHITE);
     text.draw_centered(
-        "Esc or click to resume",
-        center.x,
-        center.y + 34.0,
+        "Click or Esc to resume",
+        center_x,
+        layout.resume,
         text::SMALL,
         Color::from_rgba(180, 190, 205, 255),
     );
+    // キーは右揃え、働きは左揃えにして、真ん中で向かい合わせる。
+    let key_color = Color::from_rgba(230, 235, 245, 255);
+    let action_color = Color::from_rgba(150, 160, 175, 255);
+    for (i, (key, action)) in CONTROLS.iter().enumerate() {
+        let y = layout.controls + CONTROL_ROW * i as f32;
+        let width = text.measure(key, text::SMALL).width;
+        text.draw(key, center_x - 16.0 - width, y, text::SMALL, key_color);
+        text.draw(action, center_x + 16.0, y, text::SMALL, action_color);
+    }
 }
 
 /// 一時停止の画面で、音量の操作を「Esc かクリックで再開」の下に置く。
 fn volume_panel(screen: Vec2) -> volume::Panel {
-    volume::Panel::new(screen.x / 2.0, screen.y / 2.0 + 84.0)
+    pause_layout(screen).panel
 }
 
 /// 自己ベストの表示。まだ無いとき（初めて遊ぶ前やデータを消した後）は「なし」と出し、0 点と見分ける。
@@ -320,14 +375,14 @@ fn best_label(best: Option<u32>) -> String {
 
 /// ゲームオーバーの画面の、上から並べる行の間隔。それぞれ前の行のベースラインからの距離。
 const OVER_TITLE: f32 = text::LARGE;
-const OVER_REASON: f32 = 48.0;
-const OVER_SCORE: f32 = 44.0;
+const OVER_REASON: f32 = 56.0;
+const OVER_SCORE: f32 = 48.0;
 /// 自己ベストの行。更新したときは「NEW BEST!」を大きく出す。
-const OVER_BEST: f32 = 44.0;
+const OVER_BEST: f32 = 40.0;
 /// 自己ベストの行のベースラインから、ランキングの見出しの上端まで。
-const OVER_RANKING_GAP: f32 = 16.0;
+const OVER_RANKING_GAP: f32 = 28.0;
 /// ランキングの表の下端から、「Retry」ボタンの上端まで。
-const OVER_RETRY_GAP: f32 = 20.0;
+const OVER_RETRY_GAP: f32 = 32.0;
 const RETRY_SIZE: Vec2 = vec2(200.0, 52.0);
 /// 画面の上下に残す余白。
 const OVER_MARGIN: f32 = 16.0;
@@ -387,7 +442,7 @@ fn draw_game_over(
     pointer: Vec2,
     screen: Vec2,
 ) {
-    draw_rectangle(0.0, 0.0, screen.x, screen.y, Color::from_rgba(0, 0, 0, 140));
+    draw_rectangle(0.0, 0.0, screen.x, screen.y, DIM);
     let center_x = screen.x / 2.0;
     let layout = game_over_layout(screen);
     let mut y = layout.top + OVER_TITLE;
@@ -431,6 +486,15 @@ fn draw_game_over(
         );
     }
     y += OVER_RANKING_GAP;
+    // ランキングは囲みの中に出し、上の自分の結果と分けて見せる。
+    let pad = vec2(24.0, 10.0);
+    draw_rectangle(
+        center_x - ranking::WIDTH / 2.0 - pad.x,
+        y - pad.y,
+        ranking::WIDTH + pad.x * 2.0,
+        Board::height(layout.rows) + pad.y * 2.0,
+        Color::from_rgba(20, 24, 32, 230),
+    );
     board.draw(text, center_x, y, layout.rows);
     draw_retry_button(text, layout.retry, since_over >= RETRY_DELAY, pointer);
 }
@@ -481,9 +545,9 @@ mod tests {
     #[test]
     fn game_over_fits_the_screen() {
         assert_eq!(ranking_rows(720.0), ranking::MAX_ROWS);
-        let rows = ranking_rows(400.0);
+        let rows = ranking_rows(480.0);
         assert!(rows < ranking::MAX_ROWS);
-        assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 400.0);
+        assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 480.0);
         assert_eq!(ranking_rows(100.0), 0);
     }
 

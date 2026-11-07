@@ -15,7 +15,7 @@ pub const MAX_ROWS: usize = 5;
 /// 1 行の高さ。文字は `text::MEDIUM` の大きさで描く。
 pub const ROW_HEIGHT: f32 = 40.0;
 /// 表の横幅。順位・名前・スコアを並べる。
-const WIDTH: f32 = 640.0;
+pub const WIDTH: f32 = 640.0;
 /// 順位の列の右端（表の左端から）。
 const RANK_RIGHT: f32 = 80.0;
 /// 名前の列の左端（表の左端から）。

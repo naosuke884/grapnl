@@ -5,7 +5,6 @@ use macroquad::prelude::*;
 
 use crate::page;
 use crate::sprites::{draw_icon, Sprites};
-use crate::text::{self, Text};
 
 /// 音量の段階の数。いちばん上が、音を作ったときの大きさ。
 pub const LEVELS: u32 = 5;
@@ -174,7 +173,7 @@ impl Panel {
             .map(Control::Level)
     }
 
-    pub fn draw(&self, text: &Text, sprites: &Sprites, volume: &Volume, hovered: Option<Control>) {
+    pub fn draw(&self, sprites: &Sprites, volume: &Volume, hovered: Option<Control>) {
         let frame = self.frame();
         draw_rectangle(
             frame.x,
@@ -217,14 +216,6 @@ impl Panel {
             draw_rectangle_lines(button.x, button.y, button.w, button.h, 2.0, WHITE);
         }
         draw_icon(icon, button.center(), ICON_DOT, WHITE);
-
-        text.draw_centered(
-            "← →  Volume     M  Mute",
-            frame.center().x,
-            frame.bottom() + 28.0,
-            text::SMALL,
-            Color::from_rgba(150, 160, 175, 255),
-        );
     }
 }
 

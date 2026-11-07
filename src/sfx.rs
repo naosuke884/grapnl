@@ -1,7 +1,7 @@
 //! 効果音。音は `scripts/gen-sfx.py` で合成した `assets/sfx/*.wav` を wasm に埋め込む。
 //! ゲームの処理は音を知らず、`game::Event` を受け取ってここで鳴らす。
 
-use macroquad::audio::{load_sound_from_bytes, play_sound_once, Sound};
+use macroquad::audio::{load_sound_from_bytes, play_sound, PlaySoundParams, Sound};
 
 use crate::game::{Event, MAX_MULTIPLIER};
 
@@ -40,8 +40,12 @@ impl Sfx {
         }
     }
 
-    /// 出来事に合う音を鳴らす。ブラウザでは最初のクリックより前に鳴らしても無音になるだけ。
-    pub fn play(&self, event: &Event) {
+    /// 出来事に合う音を `gain`（0 から 1、`Volume::gain`）の大きさで鳴らす。0 なら鳴らさない。
+    /// ブラウザでは最初のクリックより前に鳴らしても無音になるだけ。
+    pub fn play(&self, event: &Event, gain: f32) {
+        if gain <= 0.0 {
+            return;
+        }
         let sound = match *event {
             Event::WireShot => &self.shoot,
             Event::WireAttached { .. } => &self.attach,
@@ -53,7 +57,13 @@ impl Sfx {
             Event::Boosted => &self.boost,
             Event::GameOver => &self.game_over,
         };
-        play_sound_once(sound);
+        play_sound(
+            sound,
+            PlaySoundParams {
+                looped: false,
+                volume: gain,
+            },
+        );
     }
 }
 

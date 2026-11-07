@@ -132,17 +132,25 @@ mod tests {
     use super::*;
 
     /// src/ の各ファイル。新しいファイルを足したら、ここにも足す（下のテストが数を確かめる）。
-    const SOURCES: [(&str, &str); 9] = [
+    const SOURCES: [(&str, &str); 10] = [
         ("enemy.rs", include_str!("enemy.rs")),
         ("game.rs", include_str!("game.rs")),
         ("generator.rs", include_str!("generator.rs")),
         ("level.rs", include_str!("level.rs")),
         ("main.rs", include_str!("main.rs")),
+        ("particles.rs", include_str!("particles.rs")),
         ("player.rs", include_str!("player.rs")),
         ("realtime.rs", include_str!("realtime.rs")),
         ("shadow.rs", include_str!("shadow.rs")),
         ("text.rs", include_str!("text.rs")),
     ];
+
+    /// テストのモジュールより前だけを返す。テストの失敗メッセージは画面に出ないので、フォントに入れない。
+    fn without_tests(source: &str) -> &str {
+        source
+            .find("\n#[cfg(test)]\nmod tests")
+            .map_or(source, |end| &source[..end])
+    }
 
     #[test]
     fn every_source_file_is_listed() {
@@ -161,7 +169,7 @@ mod tests {
     fn font_has_every_character_in_string_literals() {
         let face = ttf_parser::Face::parse(FONT_BYTES, 0).unwrap();
         for (name, source) in SOURCES {
-            for c in literal_chars(source) {
+            for c in literal_chars(without_tests(source)) {
                 if c.is_control() {
                     continue;
                 }

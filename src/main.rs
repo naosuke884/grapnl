@@ -4,7 +4,9 @@ mod game;
 mod generator;
 mod hitstop;
 mod level;
+mod page;
 mod particles;
+mod pause;
 mod player;
 mod realtime;
 mod score_popup;
@@ -17,6 +19,7 @@ use macroquad::prelude::*;
 
 use game::{Game, VIEW_HEIGHT};
 use hitstop::HitStop;
+use pause::Pause;
 use player::WireInput;
 use shadow::{Shadows, State};
 use shake::Shake;
@@ -65,6 +68,7 @@ async fn main() {
     let mut shake = Shake::default();
     // 敵を倒した瞬間に更新を止める。止まっている間も描画とクリックの受け付けは続ける。
     let mut hit_stop = HitStop::default();
+    let mut pause = Pause::default();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -72,8 +76,30 @@ async fn main() {
         shake.update(frame_time);
         let camera = view_camera(game.camera_x);
         let aim = camera.screen_to_world(mouse_position().into());
-        wire_pressed |= is_mouse_button_pressed(MouseButton::Left);
-        boost_pressed |= is_mouse_button_pressed(MouseButton::Right);
+        let left_click = is_mouse_button_pressed(MouseButton::Left);
+        let right_click = is_mouse_button_pressed(MouseButton::Right);
+        wire_pressed |= left_click;
+        boost_pressed |= right_click;
+        // 離れたかどうかは毎フレーム読み、覚えていた分を消す。ゲームオーバーの間に離れた分を、次の回へ持ち越さない。
+        match pause.update(
+            game.over,
+            is_key_pressed(KeyCode::Escape),
+            left_click || right_click,
+            page::lost_focus(),
+        ) {
+            pause::Frame::Running => {}
+            pause::Frame::Paused => {
+                // 止まっている間に押した入力は、再開した後に使わない。
+                wire_pressed = false;
+                boost_pressed = false;
+            }
+            pause::Frame::Resumed => {
+                // 再開に使ったクリックでワイヤーを撃たない。止まっていた時間も追いかけない。
+                wire_pressed = false;
+                boost_pressed = false;
+                accumulator = 0.0;
+            }
+        }
         if game.over {
             since_over += frame_time;
             // 押した瞬間だけを見る。待ち時間のあいだに押して離した入力は、時間が過ぎてもやり直さない。
@@ -92,7 +118,7 @@ async fn main() {
             }
             wire_pressed = false;
             boost_pressed = false;
-        } else {
+        } else if !pause.paused() {
             // 止まっている時間は貯めない。押されたクリックは残し、止まり終えた後の更新で使う。
             accumulator += hit_stop.consume(frame_time);
             while accumulator >= FIXED_DT && !game.over && !hit_stop.active() {
@@ -124,8 +150,8 @@ async fn main() {
             }
         }
         shadows.forget_stale(now);
-        // 終わった後は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
-        if !game.over {
+        // 終わった後と一時停止の間は送らない。届かなくなった影は、他の人の画面からしばらくして消える。
+        if !game.over && !pause.paused() {
             until_send -= frame_time;
             if until_send <= 0.0 {
                 until_send = shadow::SEND_INTERVAL;
@@ -158,7 +184,7 @@ async fn main() {
             Color::from_rgba(180, 190, 205, 255),
         );
         text.draw(
-            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト",
+            "左クリック: ワイヤーを撃つ・戻す   右クリック: ブースト   Esc: 一時停止",
             16.0,
             screen_height() - 16.0,
             22.0,
@@ -206,6 +232,9 @@ async fn main() {
                 draw_offscreen_hazard(&text, meters);
             }
         }
+        if pause.paused() {
+            draw_paused(&text);
+        }
         if game.over {
             draw_game_over(&text, &game, since_over, high_score);
         }
@@ -246,6 +275,25 @@ fn draw_offscreen_hazard(text: &Text, meters: f32) {
         color,
     );
     text.draw_y_centered(&format!("左 {meters:.0} m"), 34.0, y, 28.0, color);
+}
+
+fn draw_paused(text: &Text) {
+    draw_rectangle(
+        0.0,
+        0.0,
+        screen_width(),
+        screen_height(),
+        Color::from_rgba(0, 0, 0, 140),
+    );
+    let center = vec2(screen_width(), screen_height()) / 2.0;
+    text.draw_centered("一時停止中", center.x, center.y - 10.0, 56.0, WHITE);
+    text.draw_centered(
+        "Esc かクリックで再開",
+        center.x,
+        center.y + 34.0,
+        24.0,
+        Color::from_rgba(180, 190, 205, 255),
+    );
 }
 
 fn draw_game_over(text: &Text, game: &Game, since_over: f32, high_score: u32) {

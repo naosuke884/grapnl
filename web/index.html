@@ -123,6 +123,26 @@
     <!-- 同時に遊んでいる人の影。load() より前に読み込む。 -->
     <script src="realtime.js"></script>
     <script>
+        // タブを離れたこととフォーカスが外れたことを覚えておき、wasm が毎フレーム読んで一時停止する（src/page.rs）。
+        // タブが裏にある間はフレームが回らないので、戻ってきた最初のフレームで読めるよう、起きたことを残しておく。
+        (function () {
+            var lost = false;
+            document.addEventListener("visibilitychange", function () {
+                if (document.hidden) lost = true;
+            });
+            window.addEventListener("blur", function () {
+                lost = true;
+            });
+            function register_plugin(importObject) {
+                importObject.env.page_lost_focus = function () {
+                    var result = lost || document.hidden;
+                    lost = false;
+                    return result ? 1 : 0;
+                };
+            }
+            miniquad_add_plugin({ register_plugin: register_plugin, name: "grapnl_page", version: 1 });
+        })();
+
         // 右クリックのブラウザメニューを出さない。
         // preventDefault は contextmenu だけを止め、mousedown / mouseup はローダーへ届く。
         document.addEventListener("contextmenu", function (event) {

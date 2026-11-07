@@ -7,7 +7,7 @@ use crate::level::Level;
 pub const PLAYER_RADIUS: f32 = 14.0;
 const GRAVITY: f32 = 1600.0;
 /// 速さの上限。振り子の勢いは削らず、ブーストを重ねて操作が追いつかなくなるのだけ防ぐ。
-const MAX_SPEED: f32 = 1600.0;
+pub const MAX_SPEED: f32 = 1600.0;
 /// ワイヤーが届く最大の長さ。地形の刺し先どうしの間隔（350 以下）より十分長くする。
 pub const MAX_WIRE_LENGTH: f32 = 900.0;
 /// これより短いワイヤーにはしない。支点の真下で振り子が暴れないようにする。

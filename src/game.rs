@@ -4,7 +4,7 @@ use crate::enemy::Enemies;
 use crate::generator::Generator;
 use crate::level::Level;
 use crate::particles::Particles;
-use crate::player::{Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
+use crate::player::{self, Player, WireInput, MAX_WIRE_LENGTH, PLAYER_RADIUS};
 use crate::score_popup::Popups;
 use crate::sprites::{draw_sprite, Sprites, SPRITE_DOT};
 use crate::text::Text;
@@ -37,10 +37,15 @@ pub const KILL_POINTS: u32 = 100;
 pub const MAX_MULTIPLIER: u32 = 5;
 /// 左から迫ってくる、触れたら終わる領域。開始時は自機のこれだけ左から始まる。
 const HAZARD_START_GAP: f32 = 900.0;
-/// 迫ってくる速さ。最初はゆっくりで、時間とともに上限まで速くなる。
+/// 迫ってくる速さ。最初はゆっくりで、上限なしに一定の割合で速くなり続ける。
+/// コースは終わらないが、いずれ自機より速くなって必ず追いつくので、実質の制限時間になる。
 const HAZARD_START_SPEED: f32 = 120.0;
-const HAZARD_ACCELERATION: f32 = 3.0;
-const HAZARD_MAX_SPEED: f32 = 450.0;
+const HAZARD_ACCELERATION: f32 = 4.0;
+/// 自機の最高速より速くなるまでの時間（秒）。これより長くは逃げ切れない。
+const HAZARD_OUTRUNS_PLAYER_AT: f32 =
+    (player::MAX_SPEED - HAZARD_START_SPEED) / HAZARD_ACCELERATION;
+// 6 分ちょっと（370 秒）で、どう逃げても追いつかれる。
+const _: () = assert!(HAZARD_OUTRUNS_PLAYER_AT > 300.0 && HAZARD_OUTRUNS_PLAYER_AT < 420.0);
 /// 画面の距離表示の単位。ワールドの 10 を 1 m と数える。
 const UNITS_PER_METER: f32 = 10.0;
 
@@ -253,7 +258,7 @@ impl Game {
         let front = self.best_x - FOLLOW_OFFSET;
         self.enemies.update(front, self.camera_x, dt);
 
-        self.hazard_speed = (self.hazard_speed + HAZARD_ACCELERATION * dt).min(HAZARD_MAX_SPEED);
+        self.hazard_speed += HAZARD_ACCELERATION * dt;
         self.hazard_x += self.hazard_speed * dt;
 
         let fell = self.player.position.y - PLAYER_RADIUS > FALL_LIMIT_Y;

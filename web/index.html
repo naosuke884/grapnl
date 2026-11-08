@@ -179,6 +179,49 @@
     <!-- バンドル末尾の quad_net が strict mode で未宣言の register_plugin へ代入する。
          先にグローバルを置かないと、その代入が例外になりプラグイン登録が途中で止まる。 -->
     <script>var register_plugin;</script>
+    <!-- iPhone の Safari では、AudioContext はタップなどの操作の中で resume しないと鳴らない。
+         バンドルの macroquad_audio は最初の touchstart で一度だけ resume して見張りをやめるが、
+         iOS の touchstart は操作として数えられず resume が通らないので、そのまま音が出なくなる。
+         バンドルを直さずに済むよう、作られた AudioContext を覚えておき、操作として数えられるイベントのたびに、
+         止まっているものを resume する。裏から戻って interrupted になったときも、次のタップで鳴り直す。
+         バンドルは読み込まれたときに window.AudioContext を取り込むので、mq_js_bundle.js より前に置く。 -->
+    <script>
+        (function () {
+            var Base = window.AudioContext || window.webkitAudioContext;
+            if (!Base) return;
+            var contexts = [];
+            function TrackedAudioContext(options) {
+                var ctx = options === undefined ? new Base() : new Base(options);
+                contexts.push(ctx);
+                return ctx;
+            }
+            TrackedAudioContext.prototype = Base.prototype;
+            window.AudioContext = TrackedAudioContext;
+            if (window.webkitAudioContext) window.webkitAudioContext = TrackedAudioContext;
+
+            function unlock() {
+                for (var i = 0; i < contexts.length; i++) {
+                    var ctx = contexts[i];
+                    if (ctx.state === "running" || ctx.state === "closed") continue;
+                    var resumed = ctx.resume();
+                    if (resumed && resumed.catch) resumed.catch(function () {});
+                    // 古い iOS は resume だけでは鳴らず、操作の中で何か再生する必要がある。無音を 1 サンプル流す。
+                    try {
+                        var source = ctx.createBufferSource();
+                        source.buffer = ctx.createBuffer(1, 1, 22050);
+                        source.connect(ctx.destination);
+                        source.start(0);
+                    } catch (e) {
+                        // 鳴らせなくても次の操作でもう一度試す。
+                    }
+                }
+            }
+            // キャンバスの touch のハンドラーが preventDefault するので、click は来ないことがある。touchend も見る。
+            ["touchend", "pointerup", "mousedown", "keydown", "click"].forEach(function (type) {
+                document.addEventListener(type, unlock, true);
+            });
+        })();
+    </script>
     <script src="mq_js_bundle.js"></script>
     <script>
         // 自己ベストと送れなかったスコアの置き場所は slug で分かれる。

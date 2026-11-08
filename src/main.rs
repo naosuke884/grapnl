@@ -88,6 +88,10 @@ async fn main() {
     let mut board = Board::default();
     // ランキングと影の名前を描く。描けない名前があれば、名前用のフォントを後から読む。
     let mut name_font = names::NameFont::default();
+    // 最後の入力がタッチだったか。タッチではマウスの位置も動くが、同じフレームに touches() にも出る。
+    // touches() が空のままマウスが動いたら、マウスに持ち替えたと見る。
+    let mut touch_input = false;
+    let mut last_mouse = mouse_position();
 
     loop {
         let frame_time = get_frame_time().min(MAX_FRAME_TIME);
@@ -96,7 +100,14 @@ async fn main() {
         // 16:9 より横長の画面では、ワールドを中央の 16:9 の範囲に映す。
         let playfield = Playfield::current();
         let camera = playfield.camera(playfield.origin(game.camera_x, game.player.position));
-        let aim = camera.screen_to_world(mouse_position().into());
+        let mouse = mouse_position();
+        if !touches().is_empty() {
+            touch_input = true;
+        } else if mouse != last_mouse {
+            touch_input = false;
+        }
+        last_mouse = mouse;
+        let aim = camera.screen_to_world(mouse.into());
         let left_click = is_mouse_button_pressed(MouseButton::Left);
         let right_click = is_mouse_button_pressed(MouseButton::Right);
         // 画面の文字は、ワールドを映す範囲の左上を原点にした座標で置く。小さい画面では縮めて描く（`Playfield::ui_scale`）。
@@ -259,7 +270,7 @@ async fn main() {
         set_camera(&shaken);
         // 影は判定に関わらないので、地形や自機より奥に描く。
         shadows.draw(now, &sprites, &fonts, &name_font, world_per_pixel);
-        game.draw(heading, &sprites, world_per_pixel);
+        game.draw(heading, &sprites, world_per_pixel, !touch_input);
         playfield.draw_offscreen_marker(origin, game.player.position, player::PLAYER_RADIUS);
 
         set_default_camera();

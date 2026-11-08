@@ -358,13 +358,16 @@ impl Game {
     }
 
     /// ワールド座標のカメラの下で呼ぶ。`world_per_pixel` は画面の 1 ピクセルに映るワールドの幅。
-    pub fn draw(&self, text: &Text, sprites: &Sprites, world_per_pixel: f32) {
+    /// `show_aim` が偽なら照準を描かない。タッチで遊んでいると、照準は最後に触れた所に残るだけで狙いの役に立たない。
+    pub fn draw(&self, text: &Text, sprites: &Sprites, world_per_pixel: f32, show_aim: bool) {
         self.draw_hazards();
         // ワイヤーとフックは地形より先に描き、地形に食い込んだ爪を隠す。
         self.player.draw_wire();
         self.level.draw(sprites);
         self.enemies.draw(sprites);
-        self.draw_aim(sprites);
+        if show_aim {
+            self.draw_aim(sprites);
+        }
         self.player.draw(sprites);
         // 判定には使わない。自機や地形より手前に描いて、倒した・刺さったことが分かるようにする。
         self.particles.draw();

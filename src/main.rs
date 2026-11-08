@@ -296,6 +296,15 @@ async fn main() {
             text::SMALL,
             Color::from_rgba(150, 160, 175, 255),
         );
+        if let Some(playing) = realtime::playing() {
+            text.draw(
+                &overlay::playing_label(playing),
+                16.0,
+                88.0,
+                text::SMALL,
+                Color::from_rgba(150, 160, 175, 255),
+            );
+        }
         // 遊び方・名前・データの操作は一時停止の画面にまとめたので、開くボタンだけを右上に出す。
         if !game.over() && !pause.paused() {
             overlay::draw_menu_button(heading, screen, pointer);

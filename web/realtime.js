@@ -13,6 +13,12 @@
     var REPLACED_CLOSE_CODE = 4000;
     var MAX_RECONNECT_MS = 60000;
     var reconnectDelay = RECONNECT_MS;
+    // いまこのゲームを遊んでいる人数（サイトのトップやゲームページと同じ数）。部屋に入ったら読み始め、
+    // サイトと同じ間隔で読み直す。まだ読めていないとき、読めないときは -1 のまま。
+    var PRESENCE_URL = API_ORIGIN + "/games/grapnl/presence";
+    var PRESENCE_REFRESH_MS = 30000;
+    var playing = -1;
+    var presenceTimer = null;
 
     var socket = null;
     var roomKey = null;
@@ -115,8 +121,31 @@
             });
     }
 
+    function loadPresence() {
+        // タブが裏にある間は読まない。戻ってから次に読むまでは前の数を出す。
+        if (document.hidden) return;
+        fetch(PRESENCE_URL, { headers: { accept: "application/json" } })
+            .then(function (res) {
+                if (!res.ok) throw new Error("人数が読めない");
+                return res.json();
+            })
+            .then(function (body) {
+                if (body && Number.isInteger(body.playing) && body.playing >= 0) playing = body.playing;
+            })
+            .catch(function () {
+                // 読めなければ前の数のまま。
+            });
+    }
+
+    function watchPresence() {
+        if (presenceTimer !== null) return;
+        loadPresence();
+        presenceTimer = setInterval(loadPresence, PRESENCE_REFRESH_MS);
+    }
+
     function join(key) {
         if (window.location.origin !== PLAY_ORIGIN) return;
+        watchPresence();
         if (key === roomKey) return;
         roomKey = key;
         queue = [];
@@ -138,6 +167,9 @@
         };
         importObject.env.realtime_next_len = function () {
             return queue.length > 0 ? queue[0].length : -1;
+        };
+        importObject.env.realtime_playing = function () {
+            return playing;
         };
         importObject.env.realtime_take = function (ptr, len) {
             var message = queue.shift();

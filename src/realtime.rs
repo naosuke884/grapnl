@@ -13,6 +13,7 @@ extern "C" {
     fn realtime_send(data: *const u8, len: u32);
     fn realtime_next_len() -> i32;
     fn realtime_take(data: *mut u8, len: u32);
+    fn realtime_playing() -> i32;
 }
 
 /// 部屋 `key` に入る。別の部屋にいれば出てから入る。
@@ -48,6 +49,19 @@ pub fn receive() -> Option<Vec<u8>> {
         let mut buffer = vec![0; len.min(MAX_MESSAGE)];
         unsafe { realtime_take(buffer.as_mut_ptr(), buffer.len() as u32) };
         (len <= MAX_MESSAGE).then_some(buffer)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// いまこのゲームを遊んでいる人数。サイトのトップやゲームページに出るのと同じ数で、30 秒ごとに読み直す。
+/// まだ読めていないとき、読めないとき、ネイティブ実行では `None`。
+pub fn playing() -> Option<u32> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        u32::try_from(unsafe { realtime_playing() }).ok()
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

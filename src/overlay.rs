@@ -285,6 +285,12 @@ pub(crate) fn best_label(best: Option<u32>) -> String {
     }
 }
 
+/// いま遊んでいる人数の表示。数は少し前に数えたもので、開いたばかりだと自分がまだ入っていないことがあるので、
+/// 自分の分として少なくとも 1 人と出す。
+pub(crate) fn playing_label(playing: u32) -> String {
+    format!("{} playing now", playing.max(1))
+}
+
 /// ゲームオーバーの画面の、上から並べる行の間隔。それぞれ前の行のベースラインからの距離。
 const OVER_TITLE: f32 = text::LARGE;
 const OVER_REASON: f32 = 56.0;
@@ -468,5 +474,12 @@ mod tests {
         assert!(rows < ranking::MAX_ROWS);
         assert!(game_over_fixed_height() + Board::height(rows) + OVER_MARGIN * 2.0 <= 600.0);
         assert_eq!(ranking_rows(100.0), 0);
+    }
+
+    #[test]
+    fn playing_counts_at_least_myself() {
+        assert_eq!(playing_label(0), "1 playing now");
+        assert_eq!(playing_label(1), "1 playing now");
+        assert_eq!(playing_label(12), "12 playing now");
     }
 }
